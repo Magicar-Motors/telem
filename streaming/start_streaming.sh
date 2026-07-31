@@ -3,7 +3,7 @@
 # Ports: 9000, 9001 for video (max 2 cameras), 9002 for audio
 set -euo pipefail
 
-export TAILSCALE_HOST=100.99.198.13
+export TAILSCALE_HOST="${TAILSCALE_HOST:-jacky-zhao----frx227qrpk.taila8da73.ts.net}"
 BASE_PORT=9000
 AUDIO_PORT=9002
 MAX_VIDEO_STREAMS=2
