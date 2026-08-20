@@ -80,6 +80,7 @@ const TOP_SPEED = 145;  // km/h (~90 mph)
 const MIN_SPEED = 30;   // km/h (~19 mph)
 const MAX_ACCEL = 25;   // km/h/s (accelerating)
 const MAX_DECEL = 45;   // km/h/s (braking)
+const ENGINE_MAX_RPM = 7000;
 
 // 1. Per-point heading + signed curvature
 const headings: number[] = [];
@@ -183,6 +184,8 @@ let throttlePos = 0;
 let gForceX = 0;
 let gForceY = 0;
 let coolantTemp = 85;
+let oilTempC = 88;
+let oilPressurePsi = 50;
 let mapKpa = 40;
 let trackDist = 0;
 let currentGear = 2;
@@ -231,6 +234,11 @@ function step(dt: number): void {
 
   coolantTemp = lerp(coolantTemp, 92, dt * 0.05);
   coolantTemp = clamp(jitter(coolantTemp, 0.2), 60, 110);
+  // Synthetic engine-health channels for exercising the dashboard without
+  // the physical AEM senders attached.
+  const oilTempTargetC = 107 + (rpm / ENGINE_MAX_RPM) * 14;
+  oilTempC = clamp(lerp(oilTempC, oilTempTargetC, dt * 0.02), 38, 140);
+  oilPressurePsi = clamp(5 + rpm * 0.015, 10, 100);
   speed = clamp(speed, MIN_SPEED, TOP_SPEED);
   throttlePos = clamp(throttlePos, 0, 100);
   gForceX = clamp(gForceX, -1.5, 1.5);
@@ -297,6 +305,8 @@ async function main(): Promise<void> {
       { channel: "speed", value: Math.round(jitter(speed, 3) * 10) / 10, ts },
       { channel: "throttle_pos", value: Math.round(jitter(throttlePos, 2) * 10) / 10, ts },
       { channel: "coolant_temp", value: Math.round(jitter(coolantTemp, 1.5) * 10) / 10, ts },
+      { channel: "oil_temp", value: Math.round(jitter(oilTempC, 0.6) * 10) / 10, ts },
+      { channel: "oil_pressure", value: Math.round(jitter(oilPressurePsi, 1.5) * 10) / 10, ts },
       { channel: "manifold_pressure", value: Math.round(jitter(mapKpa, 2) * 10) / 10, ts },
       { channel: "rpm", value: Math.round(jitter(rpm, rpm * 0.02)), ts },
       { channel: "gear", value: currentGear, ts },

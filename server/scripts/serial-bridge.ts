@@ -1,6 +1,7 @@
 /**
  * Reads ECU telemetry from Arduino Mega over serial and POSTs to /ingest.
- * Serial format: "ect tps map brake vbatt rpm vss_hz\n" (space-separated, 25Hz)
+ * Serial format: "ect tps map brake vbatt rpm vss_hz oil_temp_f oil_pressure_psi\n"
+ * (space-separated, 25Hz)
  *
  * Vehicle: 1992 Honda Accord EX (F22A1)
  *
@@ -34,6 +35,14 @@
  *
  *   Battery Voltage — Pin A6
  *     Through 4.3× voltage divider. Already scaled in firmware.
+ *
+ *   Oil Temperature — Pin A1
+ *     AEM 30-2013 thermistor with a 2.2kΩ pull-up. Converted to °F in firmware,
+ *     then normalized to °C for the telemetry channel (matching coolant_temp).
+ *
+ *   Oil Pressure — Pin A0
+ *     AEM 30-2130-100. 0.5V = 0 psi, 4.5V = 100 psi.
+ *     Converted to psi in firmware.
  *
  *   RPM (Tach) — Pin D18 (INT3)
  *     12V square wave through R1=33k R2=20k voltage divider.
@@ -76,7 +85,7 @@ function vssToKph(hz: number): number {
 
 async function main() {
   console.log(`serial-bridge: ${SERIAL_PORT} → ${INGEST_URL}`);
-  console.log(`  format: ect tps map brake vbatt rpm vss_hz`);
+  console.log(`  format: ect tps map brake vbatt rpm vss_hz [oil_temp_f oil_pressure_psi]`);
 
   execSync(`stty -F ${SERIAL_PORT} 115200 raw -echo`);
 
@@ -90,9 +99,14 @@ async function main() {
 
   rl.on("line", async (line) => {
     const parts = line.trim().split(/\s+/);
-    if (parts.length !== 7) return;
+    // Accept the old seven-field firmware during deployment as well as the
+    // new nine-field format so the bridge and Mega can be updated separately.
+    if (parts.length !== 7 && parts.length !== 9) return;
 
-    const [ectStr, tpsStr, mapStr, brakeStr, vbattStr, rpmStr, vssStr] = parts;
+    const [
+      ectStr, tpsStr, mapStr, brakeStr, vbattStr, rpmStr, vssStr,
+      oilTempFStr, oilPressurePsiStr,
+    ] = parts;
     const ectV = parseFloat(ectStr);
     const tpsV = parseFloat(tpsStr);
     const mapV = parseFloat(mapStr);
@@ -100,6 +114,8 @@ async function main() {
     const vbatt = parseFloat(vbattStr);
     const rpmRaw = parseFloat(rpmStr);
     const vssHz = parseFloat(vssStr);
+    const oilTempF = oilTempFStr === undefined ? NaN : parseFloat(oilTempFStr);
+    const oilPressurePsi = oilPressurePsiStr === undefined ? NaN : parseFloat(oilPressurePsiStr);
 
     if (!rpmInit) { rpmSmoothed = rpmRaw; rpmInit = true; }
     else rpmSmoothed = RPM_EMA_ALPHA * rpmRaw + (1 - RPM_EMA_ALPHA) * rpmSmoothed;
@@ -124,6 +140,16 @@ async function main() {
       { channel: "brake_voltage", value: Math.round(brakeV * 100) / 100 },
       { channel: "vss_hz", value: Math.round(vssHz * 10) / 10 },
     ];
+
+    // A disconnected temperature sender is emitted as "nan" by the Mega.
+    // Keep ingesting all other channels and omit only the unavailable sensor.
+    if (Number.isFinite(oilTempF)) {
+      const oilTempC = (oilTempF - 32) * 5 / 9;
+      payload.push({ channel: "oil_temp", value: Math.round(oilTempC * 10) / 10 });
+    }
+    if (Number.isFinite(oilPressurePsi)) {
+      payload.push({ channel: "oil_pressure", value: Math.round(oilPressurePsi * 10) / 10 });
+    }
 
     try {
       await fetch(INGEST_URL, {
