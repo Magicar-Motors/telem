@@ -8,7 +8,12 @@ BIND_ADDR=0.0.0.0
 BASE_PORT=9000
 AUDIO_PORT=9002
 MAX_VIDEO_STREAMS=2
-SRT_LATENCY=100
+# SRT recovers loss by retransmission, which costs a full round trip. Trackside
+# cellular measures ~160ms median RTT (220ms peaks), so a budget below that
+# leaves every retransmit arriving after its deadline — the decoder keeps the
+# damaged reference and smears until the next keyframe. Keep this well above
+# RTT; Haivision's guidance is 4x.
+SRT_LATENCY=800
 
 # Find all video capture devices (skip metadata/control nodes)
 DEVICES=()
@@ -101,7 +106,7 @@ for i in "${!DEVICES[@]}"; do
       ! jpegdec \
       ! clockoverlay time-format="%Y-%m-%d %H:%M:%S %Z" halignment=left valignment=bottom font-desc="monospace 6" shaded-background=true \
       ! nvvidconv ! 'video/x-raw(memory:NVMM)' \
-      ! nvv4l2h264enc maxperf-enable=true ratecontrol-enable=true EnableTwopassCBR=false peak-bitrate=8000000 bitrate=4000000 iframeinterval=15 insert-sps-pps=true \
+      ! nvv4l2h264enc maxperf-enable=true ratecontrol-enable=true EnableTwopassCBR=false peak-bitrate=3000000 bitrate=2500000 iframeinterval=15 insert-sps-pps=true \
       ! h264parse ! queue max-size-time=200000000 leaky=downstream ! mpegtsmux alignment=7 \
       ! srtsink uri="srt://${BIND_ADDR}:${port}?mode=listener" latency=${SRT_LATENCY} sync=false &
   else
@@ -111,7 +116,7 @@ for i in "${!DEVICES[@]}"; do
       v4l2src device="${dev}" \
       ! "image/jpeg,width=${w},height=${h},framerate=30/1" \
       ! jpegdec ! nvvidconv flip-method=2 ! 'video/x-raw(memory:NVMM)' \
-      ! nvv4l2h264enc maxperf-enable=true ratecontrol-enable=true EnableTwopassCBR=false peak-bitrate=8000000 bitrate=4000000 iframeinterval=15 insert-sps-pps=true \
+      ! nvv4l2h264enc maxperf-enable=true ratecontrol-enable=true EnableTwopassCBR=false peak-bitrate=1500000 bitrate=1200000 iframeinterval=15 insert-sps-pps=true \
       ! h264parse ! queue max-size-time=200000000 leaky=downstream ! mpegtsmux alignment=7 \
       ! srtsink uri="srt://${BIND_ADDR}:${port}?mode=listener" latency=${SRT_LATENCY} sync=false &
   fi
