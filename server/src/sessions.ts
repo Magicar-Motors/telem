@@ -79,7 +79,7 @@ export class SessionStore extends EventEmitter {
     return session;
   }
 
-  update(id: string, patch: Partial<Pick<Session, "running" | "laps" | "lapStartSeq" | "lapStartTs" | "driver">>): Session | null {
+  update(id: string, patch: Partial<Pick<Session, "running" | "laps" | "lapStartSeq" | "lapStartTs" | "driver" | "track">>): Session | null {
     const session = this.get(id);
     if (!session) return null;
     if (patch.running !== undefined) session.running = patch.running;
@@ -87,6 +87,11 @@ export class SessionStore extends EventEmitter {
     if (patch.lapStartSeq !== undefined) session.lapStartSeq = patch.lapStartSeq;
     if (patch.lapStartTs !== undefined) session.lapStartTs = patch.lapStartTs;
     if (patch.driver !== undefined) session.driver = patch.driver;
+    if (patch.track !== undefined) {
+      // After patch.laps, so laps swapped in by the same call get relabelled too.
+      session.track = patch.track;
+      for (const lap of session.laps) lap.track = patch.track;
+    }
     fs.writeFileSync(this.filePath(id), JSON.stringify(session));
     this.emit("update", session);
     return session;
