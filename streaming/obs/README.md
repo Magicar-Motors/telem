@@ -10,7 +10,11 @@ and so a second person can run the broadcast without rebuilding scenes by hand.
 ```
 
 Import backs up whatever is already there as `*.bak`, then you pick
-**Scene Collection → Untitled** and **Profile → Untitled** in OBS.
+**Scene Collection → telem** and **Profile → telem** in OBS.
+
+A machine still on OBS's default names needs `COLLECTION=Untitled
+PROFILE=Untitled ./sync.sh export`, or can just import once to pick up `telem`
+alongside what it already has.
 
 ## What you still have to do by hand
 

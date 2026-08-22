@@ -9,8 +9,8 @@ set -euo pipefail
 
 OBS_DIR="${OBS_DIR:-$HOME/Library/Application Support/obs-studio}"
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-COLLECTION="${COLLECTION:-Untitled}"
-PROFILE="${PROFILE:-Untitled}"
+COLLECTION="${COLLECTION:-telem}"
+PROFILE="${PROFILE:-telem}"
 
 usage() { echo "usage: $0 {export|import}" >&2; exit 1; }
 [ $# -eq 1 ] || usage
