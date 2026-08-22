@@ -1,6 +1,7 @@
 {
+    "name": "telem",
     "AuxAudioDevice1": {
-        "prev_ver": 536870914,
+        "prev_ver": 537001986,
         "name": "Mic/Aux",
         "uuid": "692629e0-93fe-4cfa-a990-4bef989335a6",
         "id": "coreaudio_input_capture",
@@ -32,17 +33,299 @@
             "mixer_hidden": true
         }
     },
-    "current_scene": "Scene",
-    "current_program_scene": "Scene",
-    "scene_order": [
-        {
-            "name": "Scene"
-        }
-    ],
-    "name": "telem",
     "sources": [
         {
-            "prev_ver": 536870914,
+            "prev_ver": 537001986,
+            "name": "Camera 1",
+            "uuid": "1da743f7-64d6-48b0-92cb-2055325ae418",
+            "id": "ffmpeg_source",
+            "versioned_id": "ffmpeg_source",
+            "settings": {
+                "ffmpeg_options": "probesize=100000 analyzeduration=500000",
+                "input": "srt://gearados-nx:9000?mode=caller&latency=800000",
+                "is_local_file": false,
+                "reconnect_delay_sec": 1,
+                "buffering_mb": 1
+            },
+            "mixers": 255,
+            "sync": 0,
+            "flags": 0,
+            "volume": 0.0,
+            "balance": 0.5,
+            "enabled": true,
+            "muted": false,
+            "push-to-mute": false,
+            "push-to-mute-delay": 0,
+            "push-to-talk": false,
+            "push-to-talk-delay": 0,
+            "hotkeys": {
+                "libobs.mute": [],
+                "libobs.unmute": [],
+                "libobs.push-to-mute": [],
+                "libobs.push-to-talk": [],
+                "MediaSource.Restart": [],
+                "MediaSource.Play": [],
+                "MediaSource.Pause": [],
+                "MediaSource.Stop": []
+            },
+            "deinterlace_mode": 0,
+            "deinterlace_field_order": 0,
+            "monitoring_type": 0,
+            "private_settings": {
+                "mixer_hidden": true
+            }
+        },
+        {
+            "prev_ver": 537001986,
+            "name": "Camera 2",
+            "uuid": "2df44771-bed5-41e4-9f0c-9e1a820293d3",
+            "id": "ffmpeg_source",
+            "versioned_id": "ffmpeg_source",
+            "settings": {
+                "input": "srt://gearados-nx:9001?mode=caller&latency=800000",
+                "ffmpeg_options": "probesize=100000 analyzeduration=500000",
+                "is_local_file": false,
+                "reconnect_delay_sec": 1,
+                "buffering_mb": 1
+            },
+            "mixers": 255,
+            "sync": 0,
+            "flags": 0,
+            "volume": 1.6638810848235153e-05,
+            "balance": 0.5,
+            "enabled": true,
+            "muted": false,
+            "push-to-mute": false,
+            "push-to-mute-delay": 0,
+            "push-to-talk": false,
+            "push-to-talk-delay": 0,
+            "hotkeys": {
+                "libobs.mute": [],
+                "libobs.unmute": [],
+                "libobs.push-to-mute": [],
+                "libobs.push-to-talk": [],
+                "MediaSource.Restart": [],
+                "MediaSource.Play": [],
+                "MediaSource.Pause": [],
+                "MediaSource.Stop": []
+            },
+            "deinterlace_mode": 0,
+            "deinterlace_field_order": 0,
+            "monitoring_type": 0,
+            "private_settings": {
+                "mixer_hidden": true
+            }
+        },
+        {
+            "prev_ver": 537001986,
+            "name": "Audio Input Capture",
+            "uuid": "8e00d165-8010-4f39-8c96-6bed23e234c8",
+            "id": "coreaudio_input_capture",
+            "versioned_id": "coreaudio_input_capture",
+            "settings": {
+                "output-default-1": 1,
+                "output-default-2": -1,
+                "device_id": "BuiltInMicrophoneDevice",
+                "enable_downmix": true
+            },
+            "mixers": 255,
+            "sync": 0,
+            "flags": 0,
+            "volume": 0.563472330570221,
+            "balance": 0.5,
+            "enabled": true,
+            "muted": false,
+            "push-to-mute": false,
+            "push-to-mute-delay": 0,
+            "push-to-talk": false,
+            "push-to-talk-delay": 0,
+            "hotkeys": {
+                "libobs.mute": [],
+                "libobs.unmute": [],
+                "libobs.push-to-mute": [],
+                "libobs.push-to-talk": []
+            },
+            "deinterlace_mode": 0,
+            "deinterlace_field_order": 0,
+            "monitoring_type": 0,
+            "private_settings": {}
+        },
+        {
+            "prev_ver": 537001986,
+            "name": "Map",
+            "uuid": "56c2d7c6-0297-4a16-8958-4d105c34677b",
+            "id": "browser_source",
+            "versioned_id": "browser_source",
+            "settings": {
+                "is_local_file": false,
+                "undo_uuid": "56c2d7c6-0297-4a16-8958-4d105c34677b",
+                "url": "http://localhost:5173/stream/map.html",
+                "width": 900
+            },
+            "mixers": 255,
+            "sync": 0,
+            "flags": 0,
+            "volume": 1.0,
+            "balance": 0.5,
+            "enabled": true,
+            "muted": false,
+            "push-to-mute": false,
+            "push-to-mute-delay": 0,
+            "push-to-talk": false,
+            "push-to-talk-delay": 0,
+            "hotkeys": {
+                "libobs.mute": [],
+                "libobs.unmute": [],
+                "libobs.push-to-mute": [],
+                "libobs.push-to-talk": [],
+                "ObsBrowser.Refresh": []
+            },
+            "deinterlace_mode": 0,
+            "deinterlace_field_order": 0,
+            "monitoring_type": 0,
+            "private_settings": {}
+        },
+        {
+            "prev_ver": 537001986,
+            "name": "Discord",
+            "uuid": "202f8530-ec24-4c09-bd1a-8e40bb048a4b",
+            "id": "sck_audio_capture",
+            "versioned_id": "sck_audio_capture",
+            "settings": {
+                "application": "com.hnc.Discord",
+                "type": 1
+            },
+            "mixers": 255,
+            "sync": 0,
+            "flags": 0,
+            "volume": 0.5624869465827942,
+            "balance": 0.5,
+            "enabled": true,
+            "muted": false,
+            "push-to-mute": false,
+            "push-to-mute-delay": 0,
+            "push-to-talk": false,
+            "push-to-talk-delay": 0,
+            "hotkeys": {
+                "libobs.mute": [],
+                "libobs.unmute": [],
+                "libobs.push-to-mute": [],
+                "libobs.push-to-talk": []
+            },
+            "deinterlace_mode": 0,
+            "deinterlace_field_order": 0,
+            "monitoring_type": 0,
+            "private_settings": {}
+        },
+        {
+            "prev_ver": 537001986,
+            "name": "Engine Mic",
+            "uuid": "2e9e08df-579d-421f-8754-127634893d5a",
+            "id": "ffmpeg_source",
+            "versioned_id": "ffmpeg_source",
+            "settings": {
+                "input_format": "mpegts",
+                "input": "srt://gearados-nx:9002?mode=caller&latency=800000",
+                "is_local_file": false,
+                "reconnect_delay_sec": 1,
+                "buffering_mb": 1,
+                "ffmpeg_options": "probesize=100000 analyzeduration=500000"
+            },
+            "mixers": 255,
+            "sync": 0,
+            "flags": 0,
+            "volume": 0.6750966310501099,
+            "balance": 0.5,
+            "enabled": true,
+            "muted": false,
+            "push-to-mute": false,
+            "push-to-mute-delay": 0,
+            "push-to-talk": false,
+            "push-to-talk-delay": 0,
+            "hotkeys": {
+                "libobs.mute": [],
+                "libobs.unmute": [],
+                "libobs.push-to-mute": [],
+                "libobs.push-to-talk": [],
+                "MediaSource.Restart": [],
+                "MediaSource.Play": [],
+                "MediaSource.Pause": [],
+                "MediaSource.Stop": []
+            },
+            "deinterlace_mode": 0,
+            "deinterlace_field_order": 0,
+            "monitoring_type": 2,
+            "private_settings": {}
+        },
+        {
+            "prev_ver": 537001986,
+            "name": "Lap times",
+            "uuid": "f1313789-ec59-42c6-a0c8-ea66c5d114c4",
+            "id": "browser_source",
+            "versioned_id": "browser_source",
+            "settings": {
+                "url": "http://localhost:5173/stream/lap_data.html",
+                "width": 400
+            },
+            "mixers": 255,
+            "sync": 0,
+            "flags": 0,
+            "volume": 1.0,
+            "balance": 0.5,
+            "enabled": true,
+            "muted": false,
+            "push-to-mute": false,
+            "push-to-mute-delay": 0,
+            "push-to-talk": false,
+            "push-to-talk-delay": 0,
+            "hotkeys": {
+                "libobs.mute": [],
+                "libobs.unmute": [],
+                "libobs.push-to-mute": [],
+                "libobs.push-to-talk": [],
+                "ObsBrowser.Refresh": []
+            },
+            "deinterlace_mode": 0,
+            "deinterlace_field_order": 0,
+            "monitoring_type": 0,
+            "private_settings": {}
+        },
+        {
+            "prev_ver": 537001986,
+            "name": "Car Data",
+            "uuid": "690ca8c3-0aab-4571-acbf-5c0511b20682",
+            "id": "browser_source",
+            "versioned_id": "browser_source",
+            "settings": {
+                "url": "http://localhost:5173/stream/car_data.html",
+                "width": 1000,
+                "height": 800
+            },
+            "mixers": 255,
+            "sync": 0,
+            "flags": 0,
+            "volume": 1.0,
+            "balance": 0.5,
+            "enabled": true,
+            "muted": false,
+            "push-to-mute": false,
+            "push-to-mute-delay": 0,
+            "push-to-talk": false,
+            "push-to-talk-delay": 0,
+            "hotkeys": {
+                "libobs.mute": [],
+                "libobs.unmute": [],
+                "libobs.push-to-mute": [],
+                "libobs.push-to-talk": [],
+                "ObsBrowser.Refresh": []
+            },
+            "deinterlace_mode": 0,
+            "deinterlace_field_order": 0,
+            "monitoring_type": 0,
+            "private_settings": {}
+        },
+        {
+            "prev_ver": 537001986,
             "name": "Scene",
             "uuid": "4798ae26-2b4c-4e7c-a96d-f93705b7fd5b",
             "id": "scene",
@@ -292,20 +575,20 @@
                         "id": 21,
                         "group_item_backup": false,
                         "pos": {
-                            "x": 1410.0,
-                            "y": 793.0
+                            "x": 1486.0,
+                            "y": 834.0
                         },
                         "pos_rel": {
-                            "x": 0.8333333134651184,
-                            "y": 0.4685184955596924
+                            "x": 0.9740740656852722,
+                            "y": 0.5444444417953491
                         },
                         "scale": {
-                            "x": 0.265625,
-                            "y": 0.2657407522201538
+                            "x": 0.33906251192092896,
+                            "y": 0.3412037789821625
                         },
                         "scale_rel": {
-                            "x": 0.265625,
-                            "y": 0.2657407522201538
+                            "x": 0.33906251192092896,
+                            "y": 0.3412037789821625
                         },
                         "bounds": {
                             "x": 0.0,
@@ -528,298 +811,20 @@
             "monitoring_type": 0,
             "canvas_uuid": "6c69626f-6273-4c00-9d88-c5136d61696e",
             "private_settings": {}
-        },
-        {
-            "prev_ver": 536870914,
-            "name": "Camera 1",
-            "uuid": "1da743f7-64d6-48b0-92cb-2055325ae418",
-            "id": "ffmpeg_source",
-            "versioned_id": "ffmpeg_source",
-            "settings": {
-                "ffmpeg_options": "fflags=nobuffer flags=low_delay probesize=32 analyzeduration=0",
-                "input": "srt://gearados-nx:9000?mode=caller&latency=50000",
-                "is_local_file": false,
-                "reconnect_delay_sec": 1,
-                "buffering_mb": 0
-            },
-            "mixers": 255,
-            "sync": 0,
-            "flags": 0,
-            "volume": 0.0,
-            "balance": 0.5,
-            "enabled": true,
-            "muted": false,
-            "push-to-mute": false,
-            "push-to-mute-delay": 0,
-            "push-to-talk": false,
-            "push-to-talk-delay": 0,
-            "hotkeys": {
-                "libobs.mute": [],
-                "libobs.unmute": [],
-                "libobs.push-to-mute": [],
-                "libobs.push-to-talk": [],
-                "MediaSource.Restart": [],
-                "MediaSource.Play": [],
-                "MediaSource.Pause": [],
-                "MediaSource.Stop": []
-            },
-            "deinterlace_mode": 0,
-            "deinterlace_field_order": 0,
-            "monitoring_type": 0,
-            "private_settings": {
-                "mixer_hidden": true
-            }
-        },
-        {
-            "prev_ver": 536870914,
-            "name": "Camera 2",
-            "uuid": "2df44771-bed5-41e4-9f0c-9e1a820293d3",
-            "id": "ffmpeg_source",
-            "versioned_id": "ffmpeg_source",
-            "settings": {
-                "input": "srt://gearados-nx:9001?mode=caller&latency=50000",
-                "ffmpeg_options": "fflags=nobuffer flags=low_delay probesize=32 analyzeduration=0",
-                "is_local_file": false,
-                "reconnect_delay_sec": 1,
-                "buffering_mb": 0
-            },
-            "mixers": 255,
-            "sync": 0,
-            "flags": 0,
-            "volume": 1.6638810848235153e-5,
-            "balance": 0.5,
-            "enabled": true,
-            "muted": false,
-            "push-to-mute": false,
-            "push-to-mute-delay": 0,
-            "push-to-talk": false,
-            "push-to-talk-delay": 0,
-            "hotkeys": {
-                "libobs.mute": [],
-                "libobs.unmute": [],
-                "libobs.push-to-mute": [],
-                "libobs.push-to-talk": [],
-                "MediaSource.Restart": [],
-                "MediaSource.Play": [],
-                "MediaSource.Pause": [],
-                "MediaSource.Stop": []
-            },
-            "deinterlace_mode": 0,
-            "deinterlace_field_order": 0,
-            "monitoring_type": 0,
-            "private_settings": {
-                "mixer_hidden": true
-            }
-        },
-        {
-            "prev_ver": 536870914,
-            "name": "Audio Input Capture",
-            "uuid": "8e00d165-8010-4f39-8c96-6bed23e234c8",
-            "id": "coreaudio_input_capture",
-            "versioned_id": "coreaudio_input_capture",
-            "settings": {
-                "output-default-1": 1,
-                "output-default-2": -1,
-                "device_id": "BuiltInMicrophoneDevice",
-                "enable_downmix": true
-            },
-            "mixers": 255,
-            "sync": 0,
-            "flags": 0,
-            "volume": 0.563472330570221,
-            "balance": 0.5,
-            "enabled": true,
-            "muted": false,
-            "push-to-mute": false,
-            "push-to-mute-delay": 0,
-            "push-to-talk": false,
-            "push-to-talk-delay": 0,
-            "hotkeys": {
-                "libobs.mute": [],
-                "libobs.unmute": [],
-                "libobs.push-to-mute": [],
-                "libobs.push-to-talk": []
-            },
-            "deinterlace_mode": 0,
-            "deinterlace_field_order": 0,
-            "monitoring_type": 0,
-            "private_settings": {}
-        },
-        {
-            "prev_ver": 536870914,
-            "name": "Map",
-            "uuid": "56c2d7c6-0297-4a16-8958-4d105c34677b",
-            "id": "browser_source",
-            "versioned_id": "browser_source",
-            "settings": {
-                "is_local_file": false,
-                "undo_uuid": "56c2d7c6-0297-4a16-8958-4d105c34677b",
-                "url": "http://localhost:5173/stream/map.html",
-                "width": 900
-            },
-            "mixers": 255,
-            "sync": 0,
-            "flags": 0,
-            "volume": 1.0,
-            "balance": 0.5,
-            "enabled": true,
-            "muted": false,
-            "push-to-mute": false,
-            "push-to-mute-delay": 0,
-            "push-to-talk": false,
-            "push-to-talk-delay": 0,
-            "hotkeys": {
-                "libobs.mute": [],
-                "libobs.unmute": [],
-                "libobs.push-to-mute": [],
-                "libobs.push-to-talk": [],
-                "ObsBrowser.Refresh": []
-            },
-            "deinterlace_mode": 0,
-            "deinterlace_field_order": 0,
-            "monitoring_type": 0,
-            "private_settings": {}
-        },
-        {
-            "prev_ver": 536870914,
-            "name": "Lap times",
-            "uuid": "f1313789-ec59-42c6-a0c8-ea66c5d114c4",
-            "id": "browser_source",
-            "versioned_id": "browser_source",
-            "settings": {
-                "url": "http://localhost:5173/stream/lap_data.html",
-                "width": 400
-            },
-            "mixers": 255,
-            "sync": 0,
-            "flags": 0,
-            "volume": 1.0,
-            "balance": 0.5,
-            "enabled": true,
-            "muted": false,
-            "push-to-mute": false,
-            "push-to-mute-delay": 0,
-            "push-to-talk": false,
-            "push-to-talk-delay": 0,
-            "hotkeys": {
-                "libobs.mute": [],
-                "libobs.unmute": [],
-                "libobs.push-to-mute": [],
-                "libobs.push-to-talk": [],
-                "ObsBrowser.Refresh": []
-            },
-            "deinterlace_mode": 0,
-            "deinterlace_field_order": 0,
-            "monitoring_type": 0,
-            "private_settings": {}
-        },
-        {
-            "prev_ver": 536870914,
-            "name": "Car Data",
-            "uuid": "690ca8c3-0aab-4571-acbf-5c0511b20682",
-            "id": "browser_source",
-            "versioned_id": "browser_source",
-            "settings": {
-                "url": "http://localhost:5173/stream/car_data.html",
-                "width": 1000,
-                "height": 800
-            },
-            "mixers": 255,
-            "sync": 0,
-            "flags": 0,
-            "volume": 1.0,
-            "balance": 0.5,
-            "enabled": true,
-            "muted": false,
-            "push-to-mute": false,
-            "push-to-mute-delay": 0,
-            "push-to-talk": false,
-            "push-to-talk-delay": 0,
-            "hotkeys": {
-                "libobs.mute": [],
-                "libobs.unmute": [],
-                "libobs.push-to-mute": [],
-                "libobs.push-to-talk": [],
-                "ObsBrowser.Refresh": []
-            },
-            "deinterlace_mode": 0,
-            "deinterlace_field_order": 0,
-            "monitoring_type": 0,
-            "private_settings": {}
-        },
-        {
-            "prev_ver": 536870914,
-            "name": "Discord",
-            "uuid": "202f8530-ec24-4c09-bd1a-8e40bb048a4b",
-            "id": "sck_audio_capture",
-            "versioned_id": "sck_audio_capture",
-            "settings": {
-                "application": "com.hnc.Discord",
-                "type": 1
-            },
-            "mixers": 255,
-            "sync": 0,
-            "flags": 0,
-            "volume": 0.5624869465827942,
-            "balance": 0.5,
-            "enabled": true,
-            "muted": false,
-            "push-to-mute": false,
-            "push-to-mute-delay": 0,
-            "push-to-talk": false,
-            "push-to-talk-delay": 0,
-            "hotkeys": {
-                "libobs.mute": [],
-                "libobs.unmute": [],
-                "libobs.push-to-mute": [],
-                "libobs.push-to-talk": []
-            },
-            "deinterlace_mode": 0,
-            "deinterlace_field_order": 0,
-            "monitoring_type": 0,
-            "private_settings": {}
-        },
-        {
-            "prev_ver": 536870914,
-            "name": "Engine Mic",
-            "uuid": "2e9e08df-579d-421f-8754-127634893d5a",
-            "id": "ffmpeg_source",
-            "versioned_id": "ffmpeg_source",
-            "settings": {
-                "input_format": "mpegts",
-                "input": "srt://gearados-nx:9002?mode=caller",
-                "is_local_file": false,
-                "reconnect_delay_sec": 1,
-                "buffering_mb": 0
-            },
-            "mixers": 255,
-            "sync": 0,
-            "flags": 0,
-            "volume": 0.6750966310501099,
-            "balance": 0.5,
-            "enabled": true,
-            "muted": false,
-            "push-to-mute": false,
-            "push-to-mute-delay": 0,
-            "push-to-talk": false,
-            "push-to-talk-delay": 0,
-            "hotkeys": {
-                "libobs.mute": [],
-                "libobs.unmute": [],
-                "libobs.push-to-mute": [],
-                "libobs.push-to-talk": [],
-                "MediaSource.Restart": [],
-                "MediaSource.Play": [],
-                "MediaSource.Pause": [],
-                "MediaSource.Stop": []
-            },
-            "deinterlace_mode": 0,
-            "deinterlace_field_order": 0,
-            "monitoring_type": 2,
-            "private_settings": {}
         }
     ],
     "groups": [],
+    "scene_order": [
+        {
+            "name": "Scene"
+        }
+    ],
+    "current_scene": "Scene",
+    "current_program_scene": "Scene",
+    "canvases": [],
+    "current_transition": "Fade",
+    "transition_duration": 300,
+    "transitions": [],
     "quick_transitions": [
         {
             "name": "Cut",
@@ -843,14 +848,10 @@
             "fade_to_black": true
         }
     ],
-    "transitions": [],
     "saved_projectors": [],
-    "canvases": [],
-    "current_transition": "Fade",
-    "transition_duration": 300,
     "preview_locked": false,
     "scaling_enabled": false,
-    "scaling_level": 4,
+    "scaling_level": 7,
     "scaling_off_x": 0.0,
     "scaling_off_y": 0.0,
     "virtual-camera": {
