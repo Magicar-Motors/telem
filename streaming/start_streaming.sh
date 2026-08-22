@@ -1,36 +1,14 @@
 #!/usr/bin/env bash
-# Stream all webcams + audio from Jetson to Mac over SRT (MPEG-TS)
+# Serve all webcams + audio from the Jetson over SRT (MPEG-TS). The Jetson
+# listens and OBS dials in, so nothing here needs to know the viewer's address.
 # Ports: 9000, 9001 for video (max 2 cameras), 9002 for audio
 set -euo pipefail
 
-# Tailscale reassigns 100.x addresses per tailnet, so name the machine, not an IP.
-export TAILSCALE_HOST="${TAILSCALE_HOST:-jacky-zhao----frx227qrpk}"
+BIND_ADDR=0.0.0.0
 BASE_PORT=9000
 AUDIO_PORT=9002
 MAX_VIDEO_STREAMS=2
 SRT_LATENCY=100
-
-# srtsink on GStreamer 1.16 rejects hostnames with "Invalid host". tailscale
-# answers even when MagicDNS isn't wired into resolv.conf.
-resolve_target() {
-  local host="$1"
-  case "$host" in
-    *[!0-9.]*) ;;
-    *) echo "$host"; return ;;
-  esac
-
-  local ip=""
-  ip=$(tailscale ip -4 "$host" 2>/dev/null | head -1) || true
-  [ -n "$ip" ] || ip=$(getent ahostsv4 "$host" 2>/dev/null | awk 'NR==1 {print $1}') || true
-  echo "$ip"
-}
-
-TARGET_IP=$(resolve_target "$TAILSCALE_HOST")
-if [ -z "$TARGET_IP" ]; then
-  echo "Could not resolve '${TAILSCALE_HOST}' — check 'tailscale status' for the viewing machine's name" >&2
-  exit 1
-fi
-echo "Streaming to ${TAILSCALE_HOST} (${TARGET_IP})"
 
 # Find all video capture devices (skip metadata/control nodes)
 DEVICES=()
@@ -116,7 +94,7 @@ for i in "${!DEVICES[@]}"; do
 
   if [ "$STREAM_COUNT" -eq 0 ]; then
     # First stream: video only (with clock overlay)
-    echo "Streaming ${dev} (MJPEG ${res}) → srt://${TARGET_IP}:${port} ..."
+    echo "Serving ${dev} (MJPEG ${res}) → srt://${BIND_ADDR}:${port} (listener) ..."
     gst-launch-1.0 \
       v4l2src device="${dev}" \
       ! "image/jpeg,width=${w},height=${h},framerate=30/1" \
@@ -125,31 +103,31 @@ for i in "${!DEVICES[@]}"; do
       ! nvvidconv ! 'video/x-raw(memory:NVMM)' \
       ! nvv4l2h264enc maxperf-enable=true ratecontrol-enable=true EnableTwopassCBR=false peak-bitrate=8000000 bitrate=4000000 iframeinterval=15 insert-sps-pps=true \
       ! h264parse ! queue max-size-time=200000000 leaky=downstream ! mpegtsmux alignment=7 \
-      ! srtsink uri="srt://${TARGET_IP}:${port}?mode=caller" latency=${SRT_LATENCY} sync=false &
+      ! srtsink uri="srt://${BIND_ADDR}:${port}?mode=listener" latency=${SRT_LATENCY} sync=false &
   else
     # Subsequent streams: video only
-    echo "Streaming ${dev} (MJPEG ${res}) → srt://${TARGET_IP}:${port} ..."
+    echo "Serving ${dev} (MJPEG ${res}) → srt://${BIND_ADDR}:${port} (listener) ..."
     gst-launch-1.0 \
       v4l2src device="${dev}" \
       ! "image/jpeg,width=${w},height=${h},framerate=30/1" \
       ! jpegdec ! nvvidconv flip-method=2 ! 'video/x-raw(memory:NVMM)' \
       ! nvv4l2h264enc maxperf-enable=true ratecontrol-enable=true EnableTwopassCBR=false peak-bitrate=8000000 bitrate=4000000 iframeinterval=15 insert-sps-pps=true \
       ! h264parse ! queue max-size-time=200000000 leaky=downstream ! mpegtsmux alignment=7 \
-      ! srtsink uri="srt://${TARGET_IP}:${port}?mode=caller" latency=${SRT_LATENCY} sync=false &
+      ! srtsink uri="srt://${BIND_ADDR}:${port}?mode=listener" latency=${SRT_LATENCY} sync=false &
   fi
   PIDS+=($!)
   STREAM_COUNT=$((STREAM_COUNT + 1))
 done
 
 # Audio-only stream on fixed port 9002
-echo "Streaming audio (LavMicro-U) → srt://${TARGET_IP}:${AUDIO_PORT} ..."
+echo "Serving audio (LavMicro-U) → srt://${BIND_ADDR}:${AUDIO_PORT} (listener) ..."
 gst-launch-1.0 \
   alsasrc device=hw:LavMicroU,0 provide-clock=true slave-method=skew buffer-time=40000 latency-time=10000 \
   ! queue max-size-time=200000000 leaky=downstream ! audioconvert ! audioresample \
   ! 'audio/x-raw,rate=48000,channels=1' \
   ! opusenc bitrate=64000 frame-size=10 audio-type=voice \
   ! opusparse ! mpegtsmux alignment=7 \
-  ! srtsink uri="srt://${TARGET_IP}:${AUDIO_PORT}?mode=caller" latency=${SRT_LATENCY} sync=false &
+  ! srtsink uri="srt://${BIND_ADDR}:${AUDIO_PORT}?mode=listener" latency=${SRT_LATENCY} sync=false &
 PIDS+=($!)
 
 # Apply C930e settings after pipelines open the device
@@ -164,7 +142,7 @@ if [ -n "$C930E_DEV" ]; then
     && echo "Applied C930e settings") &
 fi
 
-echo "All streams started. PIDs: ${PIDS[*]}"
+echo "All streams listening, waiting for OBS to connect. PIDs: ${PIDS[*]}"
 echo "Press Ctrl+C to stop all."
 
 cleanup() {

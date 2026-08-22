@@ -163,16 +163,16 @@ GStreamer pipelines on the Jetson, SRT over Tailscale:
 
 ### Connecting OBS
 
-The Jetson dials out (SRT caller), so **OBS has to be listening first** — open it
-before the streams start, or restart `video-streaming` once OBS is up.
+The Jetson listens (SRT listener) and **OBS dials in**, so the car can boot and
+sit there streaming to nobody until a viewer connects.
 
 Add one Media Source per stream, uncheck **Local File**, and set **Input**:
 
 | Source | Input | Input Format |
 |---|---|---|
-| Camera 1 | `srt://0.0.0.0:9000?mode=listener&latency=50000` | |
-| Camera 2 | `srt://0.0.0.0:9001?mode=listener&latency=50000` | |
-| Engine Mic | `srt://0.0.0.0:9002?mode=listener` | `mpegts` |
+| Camera 1 | `srt://gearados-nx:9000?mode=caller&latency=50000` | |
+| Camera 2 | `srt://gearados-nx:9001?mode=caller&latency=50000` | |
+| Engine Mic | `srt://gearados-nx:9002?mode=caller` | `mpegts` |
 
 Set **Reconnect Delay** to 1s and **Buffering** to 0 MB on each, so a dropped
 stream comes back on its own without buying that back in latency.
@@ -183,26 +183,18 @@ asks for more, so the sender's 100ms is what you actually get.
 
 Overlays layer on top as Browser Sources pointing at the `/stream/*.html` pages.
 
-### Pointing the streams at a different machine
+### Viewing from a different machine
 
-`streaming/start_streaming.sh` takes a Tailscale machine name in `TAILSCALE_HOST`
-and resolves it at startup, so the streams survive tailnet switches and IP
-reshuffles. To send them somewhere else:
+Nothing to configure on the Jetson — it binds `0.0.0.0:9000-9002` and takes
+whoever connects. Any machine on the tailnet points its Media Sources at
+`gearados-nx` and gets the feed; two machines can pull at once.
 
-```bash
-sudo systemctl edit video-streaming
-# [Service]
-# Environment=TAILSCALE_HOST=some-other-laptop
-```
+Use the Tailscale name, not a raw `100.x` address. Tailscale reassigns those per
+tailnet, so a stale one quietly points at nothing.
 
-Don't pin a raw `100.x` address. Tailscale reassigns those per tailnet, so a
-stale one quietly starts pointing at somebody else's laptop. The name has to be
-resolved before it reaches the pipeline either way — srtsink on the Jetson's
-GStreamer 1.16 rejects hostnames with `Invalid host`.
-
-`Connection does not exist` in the logs means nothing was listening at the far
-end: OBS is closed, or `TAILSCALE_HOST` names the wrong machine. All three
-pipelines go down together on that error and systemd retries every 5s.
+`Connection does not exist` in the OBS log means the Jetson end isn't up: check
+`systemctl status video-streaming`, and that `gearados-nx` resolves. A pipeline
+that dies still takes all three down together, with systemd retrying every 5s.
 
 ## Lap Detection
 

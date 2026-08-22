@@ -537,7 +537,7 @@
             "versioned_id": "ffmpeg_source",
             "settings": {
                 "ffmpeg_options": "fflags=nobuffer flags=low_delay probesize=32 analyzeduration=0",
-                "input": "srt://0.0.0.0:9000?mode=listener&latency=50000",
+                "input": "srt://gearados-nx:9000?mode=caller&latency=50000",
                 "is_local_file": false,
                 "reconnect_delay_sec": 1,
                 "buffering_mb": 0
@@ -577,7 +577,7 @@
             "id": "ffmpeg_source",
             "versioned_id": "ffmpeg_source",
             "settings": {
-                "input": "srt://0.0.0.0:9001?mode=listener&latency=50000",
+                "input": "srt://gearados-nx:9001?mode=caller&latency=50000",
                 "ffmpeg_options": "fflags=nobuffer flags=low_delay probesize=32 analyzeduration=0",
                 "is_local_file": false,
                 "reconnect_delay_sec": 1,
@@ -787,7 +787,7 @@
             "versioned_id": "ffmpeg_source",
             "settings": {
                 "input_format": "mpegts",
-                "input": "srt://0.0.0.0:9002?mode=listener",
+                "input": "srt://gearados-nx:9002?mode=caller",
                 "is_local_file": false,
                 "reconnect_delay_sec": 1,
                 "buffering_mb": 0

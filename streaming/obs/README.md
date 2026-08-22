@@ -1,8 +1,9 @@
 # OBS setup
 
-The receiving half of the stream: three SRT listeners for the Jetson's cameras
-and mic, plus the browser overlays. Committed so it survives a machine rebuild
-and so a second person can run the broadcast without rebuilding scenes by hand.
+The receiving half of the stream: three SRT callers that dial the Jetson's
+cameras and mic, plus the browser overlays. Committed so it survives a machine
+rebuild and so a second person can run the broadcast without rebuilding scenes
+by hand.
 
 ```bash
 ./sync.sh import     # repo -> OBS  (quit OBS first, it rewrites config on exit)
@@ -30,9 +31,9 @@ alongside what it already has.
 
 | Source | What it is |
 |---|---|
-| Camera 1 | SRT listener :9000 — C930e, always this port |
-| Camera 2 | SRT listener :9001 |
-| Engine Mic | SRT listener :9002, `mpegts` input format |
+| Camera 1 | SRT caller → `gearados-nx:9000` — C930e, always this port |
+| Camera 2 | SRT caller → `gearados-nx:9001` |
+| Engine Mic | SRT caller → `gearados-nx:9002`, `mpegts` input format |
 | Map / Lap times / Car Data | Browser overlays from the Vite dev server |
 | Audio Input Capture / Discord | Local commentary audio |
 
