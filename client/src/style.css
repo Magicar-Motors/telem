@@ -385,8 +385,8 @@
 /* ── DIAGNOSTICS ── */
 .diag-grid {
   display: grid;
-  grid-template-columns: 1fr;
-  grid-template-rows: repeat(auto-fill, 1fr);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-rows: repeat(3, minmax(0, 1fr));
   height: 100%;
   gap: 1px;
   background: var(--border);
@@ -442,7 +442,7 @@
   min-height: 0;
 }
 
-/* warning state for high coolant temp */
+/* warning state for temperatures and running oil pressure */
 .diag-cell.warning .diag-cell-value {
   color: var(--red);
   text-shadow: 0 0 10px var(--red-dim);

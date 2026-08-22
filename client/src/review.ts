@@ -39,6 +39,8 @@ let lapGy: number[] = [];
 let lapRpms: number[] = [];
 let lapGears: number[] = [];
 let lapBrakes: number[] = [];
+let lapOilTempsC: number[] = [];
+let lapOilPressures: number[] = [];
 let lapTimestamps: number[] = [];
 let trailMode: "speed" | "throttle" | "rpm" | "gear" | "brake" = "speed";
 let allLapsLines: L.Polyline[] = [];
@@ -407,6 +409,23 @@ brakeWrap.className = "review-gauge";
 brakeWrap.innerHTML = `<div class="review-gauge-label">制動 BRAKE</div><div class="review-brake" id="rv-brake">${Array(10).fill('<div class="review-brake-seg"></div>').join("")}</div>`;
 gaugesEl.appendChild(brakeWrap);
 const brakeEl = brakeWrap.querySelector("#rv-brake")!;
+
+// Engine health readouts
+const engineGauges = document.createElement("div");
+engineGauges.className = "review-engine-gauges";
+engineGauges.innerHTML = `
+  <div class="review-gauge review-gauge-compact">
+    <div class="review-gauge-label">油温 OIL TEMP</div>
+    <div class="review-gauge-header"><span class="review-gauge-value" id="rv-oil-temp">--</span><span class="review-gauge-unit">\u00B0F</span></div>
+  </div>
+  <div class="review-gauge review-gauge-compact">
+    <div class="review-gauge-label">油圧 OIL PRESS</div>
+    <div class="review-gauge-header"><span class="review-gauge-value" id="rv-oil-pressure">--</span><span class="review-gauge-unit">PSI</span></div>
+  </div>
+`;
+gaugesEl.appendChild(engineGauges);
+const oilTempValueEl = engineGauges.querySelector("#rv-oil-temp")!;
+const oilPressureValueEl = engineGauges.querySelector("#rv-oil-pressure")!;
 
 
 function updateGaugeSegs(track: HTMLElement, fraction: number, colorFn: (idx: number, total: number) => string) {
@@ -883,11 +902,14 @@ function clearLapView() {
   if (posMarker) { posMarker.remove(); posMarker = null; }
   lapListEl.innerHTML = "";
   lapCoords = []; lapSpeeds = []; lapThrottles = []; lapGx = []; lapGy = [];
-  lapRpms = []; lapGears = []; lapBrakes = []; lapTimestamps = []; lapTicks = [];
+  lapRpms = []; lapGears = []; lapBrakes = []; lapOilTempsC = []; lapOilPressures = [];
+  lapTimestamps = []; lapTicks = [];
   seekEl.value = "0"; seekTimeEl.textContent = "0:00.000"; seekEpochEl.textContent = "--";
   speedValueEl.textContent = "--";
   throttleValueEl.textContent = "--";
   rpmValueEl.textContent = "--";
+  oilTempValueEl.textContent = "--";
+  oilPressureValueEl.textContent = "--";
   brakeEl.classList.remove("active");
   updateGaugeSegs(speedSegTrack, 0, () => "");
   updateGaugeSegs(tpsSegTrack, 0, () => "");
@@ -960,7 +982,7 @@ async function selectLap(idx: number, forceRefresh = false) {
   renderLapList();
 
   const lap = session.laps[idx];
-  const channels = "gps_lat,gps_lon,gps_speed,gps_heading,gps_satellites,throttle_pos,g_force_x,g_force_y,rpm,gear,brake,coolant_temp,manifold_pressure";
+  const channels = "gps_lat,gps_lon,gps_speed,gps_heading,gps_satellites,throttle_pos,g_force_x,g_force_y,rpm,gear,brake,coolant_temp,manifold_pressure,oil_temp,oil_pressure";
   const cacheKey = `/lap/${lap.startSeq}-${lap.endSeq}`;
 
   let fetchPromise = inflightPromises.get(cacheKey);
@@ -970,7 +992,8 @@ async function selectLap(idx: number, forceRefresh = false) {
     const cached = await cacheGet(cacheKey);
     if (!cached || forceRefresh) {
       lapTicks = []; lapCoords = []; lapSpeeds = []; lapThrottles = [];
-      lapGx = []; lapGy = []; lapRpms = []; lapGears = []; lapBrakes = []; lapTimestamps = [];
+      lapGx = []; lapGy = []; lapRpms = []; lapGears = []; lapBrakes = [];
+      lapOilTempsC = []; lapOilPressures = []; lapTimestamps = [];
       drawTrail();
       seekEl.max = "0"; seekEl.value = "0";
       updateSeek(0);
@@ -982,7 +1005,8 @@ async function selectLap(idx: number, forceRefresh = false) {
   } else {
     // Reusing inflight fetch — clear display and show loading
     lapTicks = []; lapCoords = []; lapSpeeds = []; lapThrottles = [];
-    lapGx = []; lapGy = []; lapRpms = []; lapGears = []; lapBrakes = []; lapTimestamps = [];
+    lapGx = []; lapGy = []; lapRpms = []; lapGears = []; lapBrakes = [];
+    lapOilTempsC = []; lapOilPressures = []; lapTimestamps = [];
     drawTrail();
     seekEl.max = "0"; seekEl.value = "0";
     updateSeek(0);
@@ -995,7 +1019,8 @@ async function selectLap(idx: number, forceRefresh = false) {
   // Ticks are already grouped by timestamp — just carry forward and extract arrays
   const latest: Record<string, number> = {};
   lapCoords = []; lapSpeeds = []; lapThrottles = []; lapGx = []; lapGy = [];
-  lapRpms = []; lapGears = []; lapBrakes = []; lapTimestamps = [];
+  lapRpms = []; lapGears = []; lapBrakes = []; lapOilTempsC = []; lapOilPressures = [];
+  lapTimestamps = [];
 
   for (const tick of lapTicks) {
     // Merge tick channels into carry-forward state
@@ -1010,6 +1035,8 @@ async function selectLap(idx: number, forceRefresh = false) {
       lapRpms.push(latest.rpm ?? 0);
       lapGears.push(latest.gear ?? 0);
       lapBrakes.push(latest.brake ?? 0);
+      lapOilTempsC.push(latest.oil_temp ?? Number.NaN);
+      lapOilPressures.push(latest.oil_pressure ?? Number.NaN);
       lapTimestamps.push(tick.ts);
     }
   }
@@ -1277,6 +1304,8 @@ function clearSeekDisplay() {
   updateGaugeSegs(tpsSegTrack, 0, () => "");
   rpmValueEl.textContent = "--";
   updateGaugeSegs(rpmSegTrack, 0, () => "");
+  oilTempValueEl.textContent = "--";
+  oilPressureValueEl.textContent = "--";
   brakeEl.classList.remove("active");
 }
 
@@ -1328,6 +1357,13 @@ function updateSeek(idx: number) {
   const rpmVal = lapRpms[idx] ?? 0;
   rpmValueEl.textContent = String(Math.round(rpmVal));
   updateGaugeSegs(rpmSegTrack, Math.min(1, rpmVal / MAX_RPM), (i, n) => rpmToColor((i + 1) / n));
+
+  const oilTempC = lapOilTempsC[idx];
+  const oilPressure = lapOilPressures[idx];
+  oilTempValueEl.textContent = Number.isFinite(oilTempC)
+    ? String(Math.round(oilTempC * 9 / 5 + 32))
+    : "--";
+  oilPressureValueEl.textContent = Number.isFinite(oilPressure) ? String(Math.round(oilPressure)) : "--";
 
   // Brake
   brakeEl.classList.toggle("active", (lapBrakes[idx] ?? 0) > 0.5);

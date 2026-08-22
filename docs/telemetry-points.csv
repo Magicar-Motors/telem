@@ -4,6 +4,8 @@ Video 2, Camera, USB,,
 Car Audio, Microphone, USB,,
 Brake Indicator,binary yes or no voltage,"12V divided down, 4.3X",A5,White/Green Brake Light Line
 Battery Voltage,analog,"12V divided down, 4.3X",A6,Tap off the PDB +12V bus
+Oil Pressure,"AEM 30-2130-100, 0.5V to 4.5V = 0 to 100 psi",5V analog,A0,Oil pressure sender
+Oil Temperature,"AEM 30-2013 lookup table, 2.2k ohm pull-up",resistive,A1,Oil temperature sender
 Throttle Position,calibrate 0 - 100,5V analog,A9,D11 ECU D connector
 Engine Coolant Temp (T/W),We need a lookup table,5V analog,A8,D13 ECU D Connector
 MAP,We need a lookup table,5V analog,A10,D13 ECU D Connector

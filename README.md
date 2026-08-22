@@ -106,6 +106,8 @@ fonts/            Berkeley Mono
 | Car Audio | Microphone | USB | — | — |
 | Brake Indicator | Binary yes/no voltage | 12V divided down 4.3× | A5 | White/Green brake light line |
 | Battery Voltage | Analog | 12V divided down 4.3× | A6 | Tap off PDB +12V bus |
+| Oil Pressure | AEM 30-2130-100, 0.5–4.5V = 0–100 psi | 5V analog | A0 | Oil pressure sender |
+| Oil Temperature | AEM 30-2013 lookup table, 2.2kΩ pull-up | Resistive | A1 | Oil temperature sender |
 | Throttle Position | Calibrated 0–100% | 5V analog | A9 | D11 ECU D connector |
 | Engine Coolant Temp | Lookup table | 5V analog | A8 | D13 ECU D connector |
 | MAP | Lookup table | 5V analog | A10 | D13 ECU D connector |

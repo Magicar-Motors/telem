@@ -10,6 +10,7 @@ const RED = "rgb(255, 68, 54)";
 const ORANGE = "rgb(255, 123, 69)";
 const GREEN = "rgb(61, 223, 128)";
 const CYAN = "rgb(0, 212, 170)";
+const YELLOW = "rgb(255, 211, 32)";
 
 interface DiagCell {
   channel: string;
@@ -23,6 +24,7 @@ interface DiagCell {
   min: number;
   max: number;
   warnAbove?: number;
+  warnBelow?: number;
   transform?: (v: number) => number;
 }
 
@@ -70,6 +72,7 @@ function createCell(
   max: number,
   warnAbove?: number,
   transform?: (v: number) => number,
+  warnBelow?: number,
 ): DiagCell {
   const cell = document.createElement("div");
   cell.className = "diag-cell";
@@ -93,7 +96,7 @@ function createCell(
     cellEl: cell,
     canvas,
     ctx: canvas.getContext("2d")!,
-    color, min, max, warnAbove, transform,
+    color, min, max, warnAbove, warnBelow, transform,
   };
 }
 
@@ -108,8 +111,10 @@ export function createDiagnostics(
 
   const cells: DiagCell[] = [
     createCell(grid, "coolant_temp", "冷却 COOLANT", "\u00B0F", RED, 32, 270, 230, toF),
-    createCell(grid, "manifold_pressure", "圧力 MAP", "kPa", ORANGE, 0, 110),
+    createCell(grid, "oil_temp", "油温 OIL TEMP", "\u00B0F", ORANGE, 100, 300, 260, toF),
+    createCell(grid, "oil_pressure", "油圧 OIL PRESS", "PSI", YELLOW, 0, 100, undefined, undefined, 15),
     createCell(grid, "battery_voltage", "電圧 BATTERY", "V", GREEN, 11, 15),
+    createCell(grid, "manifold_pressure", "圧力 MAP", "kPa", ORANGE, 0, 110),
     createCell(grid, "jetson_temp", "基板 JETSON", "\u00B0C", CYAN, 20, 100, 85),
   ];
 
@@ -131,9 +136,14 @@ export function createDiagnostics(
         : String(Math.round(smoothed));
       drawSparkline(cell, drawValues);
 
-      if (cell.warnAbove != null) {
-        cell.cellEl.classList.toggle("warning", smoothed > cell.warnAbove);
-      }
+      const warnAbove = cell.warnAbove != null && smoothed > cell.warnAbove;
+      // Oil pressure is naturally near zero with the engine off and can be
+      // around 10 psi at hot idle. Treat it as dangerous only above idle RPM.
+      const belowThresholdApplies =
+        cell.channel !== "oil_pressure" || (mgr.getSmoothed("rpm") ?? 0) > 1500;
+      const warnBelow =
+        cell.warnBelow != null && smoothed < cell.warnBelow && belowThresholdApplies;
+      cell.cellEl.classList.toggle("warning", warnAbove || warnBelow);
     }
   }
 
