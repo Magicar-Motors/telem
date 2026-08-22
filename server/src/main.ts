@@ -5,6 +5,7 @@ import { WalEngine } from "./wal.js";
 import { createServer } from "./http.js";
 import { SessionStore } from "./sessions.js";
 import { LapDetector } from "./lap-detector.js";
+import { UdpSender } from "./udp-sender.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const TRACKS_DIR = resolve(__dirname, "../../tracks");
@@ -28,7 +29,8 @@ async function main(): Promise<void> {
 
   const sessions = new SessionStore(DATA_DIR);
   const lapDetector = new LapDetector(TRACKS_DIR, sessions, wal);
-  const server = createServer(wal, sessions, lapDetector, TRACKS_DIR);
+  const udpSender = new UdpSender(wal);
+  const server = createServer(wal, sessions, lapDetector, TRACKS_DIR, udpSender);
 
   // Wire GPS data to lap detector
   let lastLat = 0;
@@ -80,6 +82,7 @@ async function main(): Promise<void> {
   const shutdown = (): void => {
     console.log("shutting down...");
     clearInterval(thermalTimer);
+    udpSender.close();
     server.close(() => {
       wal.close();
       console.log("shutdown complete");

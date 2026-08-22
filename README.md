@@ -29,9 +29,9 @@ We use a combination of analog engine taps, GPS, and cameras streaming data back
 │  racebox-bridge ─┘    (WAL engine)          │
 │                          │                  │
 │  video-streaming      HTTP :4400            │
-│  (GStreamer/SRT)      SSE /stream           │
+│  (GStreamer/SRT)      UDP ticks (live)      │
 │  cam1 :9000           msgpack /wal/range    │
-│  cam2 :9001                                 │
+│  cam2 :9001           SSE /sessions/:id     │
 │  audio :9002                                │
 └──────────────────────┬──────────────────────┘
                        │ Ethernet
@@ -45,7 +45,10 @@ We use a combination of analog engine taps, GPS, and cameras streaming data back
 ┌─────────────────────────────────────────────┐
 │  Ground Computer(s)                         │
 │                                             │
-│  ┌────────────┐      ┌──────────────────┐   │
+│  udp-client-receiver                        │
+│    udp :4402 ──▶ SSE :4401 (loopback)       │
+│         │                                   │
+│  ┌──────▼─────┐      ┌──────────────────┐   │
 │  │  Browser   │      │ OBS Studio       │   │
 │  │  (Vite)    │      │  SRT ingest      │   │
 │  │            │      │  cam1/cam2 audio │   │
@@ -67,10 +70,11 @@ We use a combination of analog engine taps, GPS, and cameras streaming data back
 ```
 src/              Arduino Mega firmware (PlatformIO)
 server/           Node.js telemetry server + WAL engine
-  src/            Core: wal.ts, http.ts, sessions.ts, lap-detector.ts, gear.ts, sensors.ts
+  src/            Core: wal.ts, http.ts, udp-sender.ts, sessions.ts, lap-detector.ts, gear.ts, sensors.ts
   scripts/        serial-bridge.ts, gen-data.ts, compact.ts, repair-sessions.ts
 client/           Vite multi-page web app
   src/            TypeScript sources for each page
+udp-client-receiver/  Ground-station live-telemetry receiver (runs on your laptop)
 bluetooth/        RaceBox BLE bridge (node-ble, UBX protocol)
 streaming/        GStreamer video/audio capture scripts
 tracks/           Track geometry JSON files (Sonoma, Sharon, etc.)
@@ -139,6 +143,38 @@ Custom append-only write-ahead log designed for low memory usage on the Jetson.
 - **Compaction**: Merges same-timestamp lines within 50ms buckets, reassigns sequential seqs, repairs session pointers
 - **Locking**: `wal.lock` file prevents concurrent servers and protects during compaction. Server returns 503 on WAL routes while compacting.
 - **Wire format**: MessagePack via `msgpackr` (~40% smaller than JSON)
+
+## Live Telemetry Transport
+
+Live telemetry is **lossy UDP**, terminated on each laptop by
+[`udp-client-receiver/`](udp-client-receiver/). Replay is unaffected — it still
+pulls complete data from the WAL over HTTP.
+
+Live telemetry used to be SSE over TCP straight from the car, and on a lossy 5G
+link it ran **14 seconds behind and never recovered**: TCP retransmitted samples
+that were already obsolete, and the server buffered writes without bound. Video
+on the same modem self-restored because SRT discards late packets — this gives
+telemetry the same property.
+
+```
+car ──UDP msgpack ticks──▶ udp-client-receiver ──SSE localhost:4401──▶ browsers
+                                  └── leased subscription, renewed every 5s ──▶ car
+```
+
+- **Merged ticks.** One datagram per WAL batch (`{seq, ts, d:{...}}`), the same
+  shape as the disk format — not one frame per channel. ~4× smaller.
+- **Leased.** The car only sends to endpoints holding a live lease (15s TTL). A
+  laptop that closes its lid stops costing uplink within the TTL.
+- **One stream per laptop.** All local browsers share one subscription, so
+  opening the debug page mid-session costs the car nothing. ~2.6 Mbps → ~136 kbps.
+- **Gaps are permanent.** Lost datagrams are never retransmitted. The dashboard's
+  `loss` field shows the rate; `lag` should stay near zero regardless.
+
+Every laptop runs its own receiver — they're independent subscribers and never
+proxy for each other. See [udp-client-receiver/README.md](udp-client-receiver/README.md).
+
+The car's SSE `/stream` still exists for `?local` development and returns
+per-channel entries; `/sessions/:id/stream` still comes straight from the car.
 
 ## Client Pages
 
@@ -235,19 +271,38 @@ journalctl -u telem-server -u serial-bridge -u racebox-bridge -u video-streaming
 
 ### Local Dashboard (laptop)
 
-Start the server and client in two terminals:
+To watch the real car, you need the receiver running — live telemetry arrives
+over UDP and nothing reaches the browser without it:
 
 ```bash
-# Terminal 1 — server
-cd server && npx tsx src/main.ts
+# Terminal 1 — live telemetry receiver
+cd udp-client-receiver && npm start
 
 # Terminal 2 — client (Vite dev server, port 5173)
 cd client && npm run dev
 ```
 
-Open **http://localhost:5173** — the `?local=true` flag connects to `localhost:4400` instead of the Jetson's Tailscale address.
+Open **http://localhost:5173**.
 
-Add `?local=true` — to connect to local synthetic data.
+For fully local work against synthetic data, run a server and generator instead,
+and add `?local` to the URL — that points the live feed back at the local
+server's SSE so no receiver is needed:
+
+```bash
+# Terminal 1 — server
+cd server && npx tsx src/main.ts
+
+# Terminal 2 — synthetic telemetry
+cd server && npx tsx scripts/gen-data.ts
+
+# Terminal 3 — client
+cd client && npm run dev
+```
+
+Open **http://localhost:5173?local**.
+
+To exercise the real UDP path locally, skip `?local` and point the receiver at
+your own server: `cd udp-client-receiver && JETSON_URL=http://localhost:4400 npm start`.
 
 ### Other Commands
 

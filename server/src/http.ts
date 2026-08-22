@@ -6,6 +6,11 @@ import { pack } from "msgpackr";
 import { WalEngine, WalEntry } from "./wal.js";
 import { SessionStore, type Lap } from "./sessions.js";
 import { LapDetector, type LapEvent } from "./lap-detector.js";
+import { UdpSender, normalizeAddr } from "./udp-sender.js";
+
+// Counted explicitly rather than via wal.listenerCount("entry") — the lap
+// detector subscribes to the same event, so listener count overreports by one.
+let sseClients = 0;
 
 function cors(res: http.ServerResponse): void {
   res.setHeader("Access-Control-Allow-Origin", "*");
@@ -28,7 +33,13 @@ function readBody(req: http.IncomingMessage): Promise<string> {
   });
 }
 
-export function createServer(wal: WalEngine, sessions: SessionStore, lapDetector?: LapDetector, tracksDir?: string): http.Server {
+export function createServer(
+  wal: WalEngine,
+  sessions: SessionStore,
+  lapDetector?: LapDetector,
+  tracksDir?: string,
+  udpSender?: UdpSender,
+): http.Server {
   const server = http.createServer(async (req, res) => {
     const url = new URL(req.url ?? "/", `http://${req.headers.host ?? "localhost"}`);
     const pathname = url.pathname;
@@ -63,15 +74,25 @@ export function createServer(wal: WalEngine, sessions: SessionStore, lapDetector
         return;
       }
 
-      if (req.method === "POST" && pathname === "/ingest") {
+      if (pathname.startsWith("/live/udp/")) {
+        await handleUdpSubscription(req, res, url, udpSender);
+      } else if (req.method === "POST" && pathname === "/ingest") {
         await handleIngest(req, res, wal);
       } else if (req.method === "GET" && pathname === "/stream") {
         handleStream(url, req, res, wal);
       } else if (req.method === "GET" && pathname === "/wal/range") {
         await handleWalRange(url, res, wal);
       } else if (req.method === "GET" && pathname === "/stats") {
+        // now/newest_ts/seq are the reference point for latency debugging: a client
+        // compares them against what it has actually received off the SSE stream.
+        // This is a fresh request, so it isn't stuck behind a backlogged stream.
         json(res, 200, {
           seq: wal.currentSeq,
+          now: Date.now(),
+          newest_ts: wal.newestTs,
+          sse_clients: sseClients,
+          udp_subscribers: udpSender?.subscriberCount ?? 0,
+          write_ms: wal.takeWriteStats(),
           total_entries: wal.totalEntries,
           channels: wal.getChannelCounts(),
           generation: wal.currentGeneration,
@@ -166,16 +187,37 @@ function handleStream(url: URL, req: http.IncomingMessage, res: http.ServerRespo
   };
 
   wal.on("entry", onEntry);
+  sseClients++;
 
-  // keepalive every 15s
-  const keepalive = setInterval(() => {
-    res.write(": keepalive\n\n");
-  }, 15_000);
+  // Heartbeat doubles as keepalive. `buf`/`sock_buf` are the bytes we've queued
+  // but not yet drained to the client — if they climb, the uplink can't carry the
+  // stream and Node is absorbing the difference as unbounded latency.
+  const BACKPRESSURE_WARN_BYTES = 256 * 1024;
+  let warned = false;
+  const heartbeat = setInterval(() => {
+    const buf = res.writableLength;
+    if (buf > BACKPRESSURE_WARN_BYTES && !warned) {
+      warned = true;
+      console.warn(`sse backpressure: ${(buf / 1024).toFixed(0)}KB queued for ${req.socket?.remoteAddress}`);
+    } else if (buf < BACKPRESSURE_WARN_BYTES / 2) {
+      warned = false;
+    }
+    sendEvent("hb", {
+      now: Date.now(),
+      seq: wal.currentSeq,
+      buf,
+      sock_buf: res.socket?.writableLength ?? 0,
+    });
+  }, 1000);
 
-  // cleanup on disconnect
+  // cleanup on disconnect — bound to two events, so guard against double-counting
+  let closed = false;
   const cleanup = (): void => {
+    if (closed) return;
+    closed = true;
+    sseClients--;
     wal.off("entry", onEntry);
-    clearInterval(keepalive);
+    clearInterval(heartbeat);
   };
 
   req?.socket?.on("close", cleanup);
@@ -199,6 +241,92 @@ async function handleWalRange(url: URL, res: http.ServerResponse, wal: WalEngine
   cors(res);
   res.writeHead(200, { "Content-Type": "application/x-msgpack" });
   res.end(pack(ticks));
+}
+
+// --- UDP live subscription ---
+
+async function handleUdpSubscription(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  url: URL,
+  udpSender?: UdpSender,
+): Promise<void> {
+  const pathname = url.pathname;
+
+  if (!udpSender) {
+    json(res, 503, { error: "udp streaming not enabled" });
+    return;
+  }
+
+  if (req.method === "GET" && pathname === "/live/udp/subscribers") {
+    json(res, 200, udpSender.list());
+    return;
+  }
+
+  // The lease rides the query string on DELETE. Bodies on DELETE are widely
+  // mishandled — Node's own http client won't even frame one — so the query
+  // param is the reliable form. A body is still accepted if one shows up.
+  if (pathname === "/live/udp/subscribe" && req.method === "DELETE") {
+    const lease = url.searchParams.get("lease");
+    if (!lease || !udpSender.unsubscribe(lease)) {
+      json(res, 404, { error: "unknown lease" });
+      return;
+    }
+    json(res, 200, { ok: true });
+    return;
+  }
+
+  const raw = await readBody(req);
+  let body: any = {};
+  if (raw.length > 0) {
+    try { body = JSON.parse(raw); } catch { json(res, 400, { error: "invalid json" }); return; }
+  }
+
+  if (pathname === "/live/udp/subscribe" && req.method === "POST") {
+    const port = Number(body.port);
+    if (!Number.isInteger(port) || port < 1 || port > 65535) {
+      json(res, 400, { error: "port is required (1-65535)" });
+      return;
+    }
+
+    // Default to wherever this request came from — over Tailscale that's the
+    // ground station's tailnet address. `addr` overrides it for odd setups.
+    const remote = req.socket?.remoteAddress ?? "";
+    const addr = typeof body.addr === "string" && body.addr.length > 0
+      ? body.addr
+      : normalizeAddr(remote);
+    if (!addr) {
+      json(res, 400, {
+        error: `cannot derive an IPv4 destination from ${remote || "the request"}; pass "addr" explicitly`,
+      });
+      return;
+    }
+
+    const ttlMs = Number.isFinite(body.ttlMs) ? Number(body.ttlMs) : undefined;
+    try {
+      const lease = udpSender.subscribe(addr, port, ttlMs);
+      console.log(`udp-sender lease ${lease.id.slice(0, 8)} → ${addr}:${port}`);
+      json(res, 200, {
+        lease: lease.id,
+        addr: lease.addr,
+        port: lease.port,
+        expiresAt: lease.expiresAt,
+        ttlMs: ttlMs ?? udpSender.defaultTtlMs,
+      });
+    } catch (err) {
+      json(res, 429, { error: err instanceof Error ? err.message : "subscribe failed" });
+    }
+    return;
+  }
+
+  if (pathname === "/live/udp/renew" && req.method === "POST") {
+    const lease = typeof body.lease === "string" ? udpSender.renew(body.lease) : null;
+    if (!lease) { json(res, 404, { error: "unknown lease" }); return; }
+    json(res, 200, { lease: lease.id, expiresAt: lease.expiresAt });
+    return;
+  }
+
+  json(res, 404, { error: "not found" });
 }
 
 // --- Session SSE stream ---

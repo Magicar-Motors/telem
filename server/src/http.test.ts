@@ -4,6 +4,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import * as http from "node:http";
 import { WalEngine } from "./wal.js";
+import { UdpSender } from "./udp-sender.js";
 import { createServer } from "./http.js";
 import { SessionStore } from "./sessions.js";
 
@@ -35,8 +36,13 @@ function request(
     });
     req.on("error", reject);
     if (body !== undefined) {
+      // Content-Length must be explicit: node only turns on chunked encoding by
+      // default for POST/PUT/PATCH, so on other methods an unframed body gets
+      // parsed as the next request and the server answers a bare 400.
+      const payload = Buffer.from(JSON.stringify(body));
       req.setHeader("Content-Type", "application/json");
-      req.write(JSON.stringify(body));
+      req.setHeader("Content-Length", payload.length);
+      req.write(payload);
     }
     req.end();
   });
@@ -100,12 +106,14 @@ describe("HTTP server", () => {
   let wal: WalEngine;
   let server: http.Server;
   let port: number;
+  let udpSender: UdpSender;
 
   beforeAll(async () => {
     dataDir = tmpDir();
     wal = new WalEngine({ dataDir, snapshotThreshold: 50_000, fsyncBatchSize: 100 });
     await wal.init();
-    server = createServer(wal, new SessionStore(dataDir));
+    udpSender = new UdpSender(wal);
+    server = createServer(wal, new SessionStore(dataDir), undefined, undefined, udpSender);
     await new Promise<void>((resolve) => {
       server.listen(0, "127.0.0.1", () => resolve());
     });
@@ -113,9 +121,69 @@ describe("HTTP server", () => {
   });
 
   afterAll(async () => {
+    udpSender.close();
     await new Promise<void>((resolve) => server.close(() => resolve()));
     wal.close();
     fs.rmSync(dataDir, { recursive: true, force: true });
+  });
+
+  describe("/live/udp — subscription lifecycle", () => {
+    it("subscribes, defaulting the destination to the caller's address", async () => {
+      const res = await request(port, "POST", "/live/udp/subscribe", { port: 45001 });
+      expect(res.status).toBe(200);
+      expect(res.body.addr).toBe("127.0.0.1");
+      expect(res.body.port).toBe(45001);
+      expect(typeof res.body.lease).toBe("string");
+      expect(res.body.expiresAt).toBeGreaterThan(Date.now());
+
+      await request(port, "DELETE", `/live/udp/subscribe?lease=${res.body.lease}`);
+    });
+
+    it("honours an explicit addr override", async () => {
+      const res = await request(port, "POST", "/live/udp/subscribe", { port: 45002, addr: "10.1.2.3" });
+      expect(res.status).toBe(200);
+      expect(res.body.addr).toBe("10.1.2.3");
+
+      await request(port, "DELETE", `/live/udp/subscribe?lease=${res.body.lease}`);
+    });
+
+    it("rejects a missing or nonsense port", async () => {
+      expect((await request(port, "POST", "/live/udp/subscribe", {})).status).toBe(400);
+      expect((await request(port, "POST", "/live/udp/subscribe", { port: 0 })).status).toBe(400);
+      expect((await request(port, "POST", "/live/udp/subscribe", { port: 99999 })).status).toBe(400);
+    });
+
+    it("lists active subscribers", async () => {
+      const sub = await request(port, "POST", "/live/udp/subscribe", { port: 45003 });
+      const list = await request(port, "GET", "/live/udp/subscribers");
+      expect(list.status).toBe(200);
+      expect(list.body.some((l: any) => l.port === 45003)).toBe(true);
+
+      await request(port, "DELETE", `/live/udp/subscribe?lease=${sub.body.lease}`);
+      const after = await request(port, "GET", "/live/udp/subscribers");
+      expect(after.body.some((l: any) => l.port === 45003)).toBe(false);
+    });
+
+    it("renews an existing lease and 404s an unknown one", async () => {
+      const sub = await request(port, "POST", "/live/udp/subscribe", { port: 45004 });
+      const renewed = await request(port, "POST", "/live/udp/renew", { lease: sub.body.lease });
+      expect(renewed.status).toBe(200);
+      expect(renewed.body.expiresAt).toBeGreaterThanOrEqual(sub.body.expiresAt);
+
+      expect((await request(port, "POST", "/live/udp/renew", { lease: "bogus" })).status).toBe(404);
+      await request(port, "DELETE", `/live/udp/subscribe?lease=${sub.body.lease}`);
+    });
+
+    it("404s unsubscribing something that isn't subscribed", async () => {
+      expect((await request(port, "DELETE", "/live/udp/subscribe?lease=bogus")).status).toBe(404);
+      expect((await request(port, "DELETE", "/live/udp/subscribe")).status).toBe(404);
+    });
+
+    it("reports subscriber count on /stats", async () => {
+      const sub = await request(port, "POST", "/live/udp/subscribe", { port: 45005 });
+      expect((await request(port, "GET", "/stats")).body.udp_subscribers).toBeGreaterThan(0);
+      await request(port, "DELETE", `/live/udp/subscribe?lease=${sub.body.lease}`);
+    });
   });
 
   describe("GET /health", () => {

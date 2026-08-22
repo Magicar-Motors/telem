@@ -9,6 +9,7 @@ import { createLapTimes, LapTimesPanel } from "./laptimes";
 import { ConnectionState } from "./types";
 import { createDropdown } from "./dropdown";
 import { TRACKS } from "./track";
+import { LatencyProbe, formatBreakdown } from "./latency-probe";
 
 const statusEl = document.getElementById("connection-status")!;
 const latencyEl = document.getElementById("stat-latency")!;
@@ -16,7 +17,13 @@ const latencySpark = document.getElementById("latency-spark") as HTMLCanvasEleme
 const latencyCtx = latencySpark.getContext("2d")!;
 const seqEl = document.getElementById("stat-seq")!;
 const rateEl = document.getElementById("stat-rate")!;
+const localUtcEl = document.getElementById("stat-local-utc")!;
+const telemUtcEl = document.getElementById("stat-telem-utc")!;
+const skewEl = document.getElementById("stat-skew")!;
+const lagEl = document.getElementById("stat-lag")!;
+const lossEl = document.getElementById("stat-loss")!;
 const mgr = new TelemetryManager();
+const latencyProbe = new LatencyProbe(mgr);
 
 const STATE_LABELS: Record<ConnectionState, string> = {
   connecting: "CONNECTING",
@@ -78,6 +85,47 @@ function drawLatencySpark(): void {
   latencyCtx.stroke();
 }
 
+// UTC clocks — this browser's wall clock next to the ts stamped on the newest
+// entry. Both are Date.now(), taken on different machines: the Jetson stamps at
+// ingest, we read at render. The gap is transport delay plus however far the two
+// clocks have drifted apart — nothing syncs them, so it isn't purely latency.
+const CLOCK_PERIOD_MS = 100;
+
+function fmtUtc(epochMs: number): string {
+  const d = new Date(epochMs);
+  const p = (n: number, width = 2): string => String(n).padStart(width, "0");
+  return `${p(d.getUTCHours())}:${p(d.getUTCMinutes())}:${p(d.getUTCSeconds())}.${p(d.getUTCMilliseconds(), 3)}`;
+}
+
+function updateClocks(): void {
+  const now = Date.now();
+  localUtcEl.textContent = fmtUtc(now);
+
+  // Ticks on its own timer, not the render loop, so a stalled feed shows up as a
+  // frozen telem clock and a climbing skew rather than three frozen fields.
+  const telemTs = mgr.lastTsNum;
+  if (telemTs === 0) {
+    telemUtcEl.textContent = "--:--:--.---";
+    skewEl.textContent = "--";
+    return;
+  }
+
+  telemUtcEl.textContent = fmtUtc(telemTs);
+  const skew = now - telemTs;
+  skewEl.textContent = `${skew >= 0 ? "+" : ""}${skew}ms`;
+}
+
+// `lag` counts seqs the car has that we don't, so it survives the two machines'
+// clocks disagreeing. `loss` is what congestion looks like now that the live
+// feed is lossy UDP — it degrades instead of falling behind.
+latencyProbe.onUpdate = (b) => {
+  lagEl.textContent = b.lagMs >= 1000
+    ? `${(b.lagMs / 1000).toFixed(1)}s`
+    : `${b.lagMs}ms`;
+  lossEl.textContent = b.leaseOk ? `${b.lossPct}%` : "NO LEASE";
+  console.log(`[latency] ${formatBreakdown(b)}`);
+};
+
 // hook into telemetry manager's ingest
 const origConnect = mgr.connect.bind(mgr);
 mgr.connect = function () {
@@ -118,6 +166,9 @@ function init() {
   diag = createDiagnostics(document.getElementById("diagnostics")!, mgr);
   lapTimes = createLapTimes(document.getElementById("laptimes")!, mgr);
   mgr.connect();
+  updateClocks();
+  setInterval(updateClocks, CLOCK_PERIOD_MS);
+  latencyProbe.start();
   requestAnimationFrame(loop);
 }
 

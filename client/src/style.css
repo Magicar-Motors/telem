@@ -16,6 +16,12 @@
   color: var(--text-bright);
 }
 
+/* Fixed-width so the ms digits don't shuffle the nav around as they tick. */
+.stat.clock {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
 #latency-spark {
   height: 16px;
   width: 80px;

@@ -86,6 +86,7 @@ interface FileRange {
 export class WalEngine extends EventEmitter {
   private config: WalConfig;
   private seq = 0;
+  private lastTs = 0;
   private generation = 1;
   private entriesInGeneration = 0;
   private fd: number | null = null;
@@ -95,6 +96,9 @@ export class WalEngine extends EventEmitter {
   private byChannel = new Map<string, WalEntry[]>();
 
   private walDir: string;
+  private maxWriteMs = 0;
+  private totalWriteMs = 0;
+  private writeSamples = 0;
   private snapshotting = false;
   private _compacting = false;
   private fileRanges: FileRange[] = [];
@@ -201,8 +205,10 @@ export class WalEngine extends EventEmitter {
     }
 
     const line: WalLine = { seq: batchSeq, ts, d };
+    const writeStart = Date.now();
     fs.writeSync(this.fd!, Buffer.from(JSON.stringify(line) + "\n"));
     this.entriesInGeneration++;
+    this.lastTs = ts;
 
     // Update in-memory range index for current file
     const curFile = walFileName(this.generation);
@@ -219,7 +225,18 @@ export class WalEngine extends EventEmitter {
       this.pendingWrites = 0;
     }
 
+    // writeSync + fsyncSync both block the event loop, so a slow disk stalls SSE
+    // delivery for every connected client. Track the worst case to rule it in or out.
+    const writeMs = Date.now() - writeStart;
+    if (writeMs > this.maxWriteMs) this.maxWriteMs = writeMs;
+    this.totalWriteMs += writeMs;
+    this.writeSamples++;
+
     for (const entry of entries) this.emit("entry", entry);
+
+    // The merged form the batch arrived in, and the shape written to disk. The UDP
+    // sender takes this rather than the exploded entries — one datagram per tick.
+    this.emit("tick", { seq: batchSeq, ts, d } satisfies WalTick);
 
     if (this.entriesInGeneration >= this.config.snapshotThreshold && !this.snapshotting) {
       this.rotateGeneration();
@@ -373,6 +390,21 @@ export class WalEngine extends EventEmitter {
   }
 
   get currentSeq(): number { return this.seq; }
+  /** ts on the most recent append — how fresh the newest data on disk is. */
+  get newestTs(): number { return this.lastTs; }
+
+  /** Blocking disk time per append. Resets each read so /stats shows a fresh window. */
+  takeWriteStats(): { maxMs: number; avgMs: number; samples: number } {
+    const stats = {
+      maxMs: this.maxWriteMs,
+      avgMs: this.writeSamples > 0 ? this.totalWriteMs / this.writeSamples : 0,
+      samples: this.writeSamples,
+    };
+    this.maxWriteMs = 0;
+    this.totalWriteMs = 0;
+    this.writeSamples = 0;
+    return stats;
+  }
   get currentGeneration(): number { return this.generation; }
   get totalEntries(): number { return this.entryCount; }
   get compacting(): boolean { return this._compacting; }

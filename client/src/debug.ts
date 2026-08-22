@@ -1,7 +1,7 @@
 import "./debug.css";
 import { propagateQueryParams } from "./nav";
 
-import { SERVER_URL } from "./server-url";
+import { SERVER_URL, LIVE_URL } from "./server-url";
 const MAX_PTS = 200;
 const container = document.getElementById("channels")!;
 const statusEl = document.getElementById("status")!;
@@ -196,10 +196,11 @@ function connect(): void {
   statusEl.textContent = "CONNECTING";
   statusEl.className = "";
 
-  const es = new EventSource(`${SERVER_URL}/stream`);
+  const es = new EventSource(`${LIVE_URL}/stream`);
 
-  es.addEventListener("entry", (e) => {
-    const { channel, value } = JSON.parse(e.data);
+  // Channels are still discovered from the data rather than declared — a tick
+  // just carries a batch of them at once instead of one per event.
+  function sample(channel: string, value: unknown): void {
     if (typeof value !== "number") return;
 
     const ch = getOrCreate(channel);
@@ -213,6 +214,17 @@ function connect(): void {
     ch.valueEl.textContent = avg.toFixed(3);
     drawSparkline(ch);
     scheduleLatencyUpdate();
+  }
+
+  es.addEventListener("tick", (e) => {
+    const tick = JSON.parse(e.data) as { d: Record<string, unknown> };
+    for (const channel in tick.d) sample(channel, tick.d[channel]);
+  });
+
+  // The car's own SSE (?local dev, no receiver running) still sends these.
+  es.addEventListener("entry", (e) => {
+    const { channel, value } = JSON.parse(e.data);
+    sample(channel, value);
   });
 
   es.onopen = () => {
