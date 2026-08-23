@@ -219,6 +219,41 @@ describe("WalEngine", () => {
       wal2.close();
     });
 
+    it("keeps numbering monotonic when the newest generation is empty", async () => {
+      // What a roll-then-restart looks like on disk: the previous generation
+      // holds the high-water mark, the current one has nothing to scan yet.
+      // Restarting numbering here is what reset seq to 0 under generation 1466
+      // on 2026-08-23 — every ground station then rejected the feed as stale.
+      wal.append({ channel: "speed", value: 100 });
+      wal.append({ channel: "speed", value: 110 });
+      wal.close();
+
+      fs.writeFileSync(path.join(dataDir, "wal", "wal.000002.log"), "");
+
+      const wal2 = new WalEngine({ dataDir, snapshotThreshold: 50_000, fsyncBatchSize: 10 });
+      await wal2.init();
+
+      expect(wal2.currentSeq).toBe(2);
+      const [entry] = wal2.append({ channel: "speed", value: 120 });
+      expect(entry.seq).toBe(3);
+      wal2.close();
+    });
+
+    it("keeps numbering monotonic when the newest generation is truncated", async () => {
+      wal.append({ channel: "speed", value: 100 });
+      wal.append({ channel: "speed", value: 110 });
+      wal.close();
+
+      // An unclean shutdown can leave the newest file with nothing parseable.
+      fs.writeFileSync(path.join(dataDir, "wal", "wal.000002.log"), "{ partial lin");
+
+      const wal2 = new WalEngine({ dataDir, snapshotThreshold: 50_000, fsyncBatchSize: 10 });
+      await wal2.init();
+
+      expect(wal2.currentSeq).toBe(2);
+      wal2.close();
+    });
+
     it("handles corrupt WAL lines gracefully", async () => {
       wal.append({ channel: "speed", value: 100 });
       wal.close();

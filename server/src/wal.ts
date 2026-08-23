@@ -121,6 +121,27 @@ export class WalEngine extends EventEmitter {
     await this.findSeqAndGeneration();
     await this.buildFileRangeIndex();
 
+    // findSeqAndGeneration only scans the newest file, so a generation that had
+    // just rolled — or whose tail was lost to an unclean shutdown — leaves seq
+    // at 0 and numbering restarts from the beginning. That is silently
+    // destructive: ground stations reject the entire feed as stale against
+    // their high-water mark, and fresh sessions record seq ranges that collide
+    // with the archive, so replay serves unrelated data. The index we just
+    // built already knows every file's max, so correct it unconditionally
+    // rather than trusting one file. (2026-08-23: seq restarted at 0 with
+    // generation 1466 on disk.)
+    let indexedMax = 0;
+    for (const fr of this.fileRanges) {
+      if (fr.maxSeq > indexedMax) indexedMax = fr.maxSeq;
+    }
+    if (indexedMax > this.seq) {
+      console.warn(
+        `wal: recovered seq ${this.seq} is behind the index (${indexedMax}) — ` +
+          `resuming at ${indexedMax} to keep numbering monotonic`,
+      );
+      this.seq = indexedMax;
+    }
+
     // Estimate total entries from file range index
     for (const fr of this.fileRanges) {
       this.entryCount += fr.maxSeq - fr.minSeq + 1;
