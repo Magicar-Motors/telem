@@ -1,6 +1,7 @@
 import "./stream.css";
 import { TelemetryManager } from "./telemetry";
-import { getActiveTrack } from "./track";
+import { getTrack } from "./track";
+import { STREAM_TRACK_ID } from "./stream-track";
 import { trackProgress } from "./track-utils";
 import { formatTime, getBestLapTime } from "./format";
 import { unpack } from "msgpackr/unpack";
@@ -26,8 +27,8 @@ interface Session {
 
 const mgr = new TelemetryManager();
 const serverUrl = mgr.serverUrl;
-const trackId = new URLSearchParams(window.location.search).get("track") ?? "sonoma";
-const trackDef = getActiveTrack();
+const trackId = STREAM_TRACK_ID;
+const trackDef = getTrack(trackId);
 const finishProgress = trackProgress(trackDef.track, trackDef.finishLine[0], trackDef.finishLine[1]);
 
 let session: Session | null = null;

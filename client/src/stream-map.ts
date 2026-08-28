@@ -3,7 +3,8 @@ import "leaflet/dist/leaflet.css";
 import L from "leaflet";
 import "leaflet-rotate";
 import { TelemetryManager } from "./telemetry";
-import { getActiveTrack } from "./track";
+import { getTrack } from "./track";
+import { STREAM_TRACK_ID } from "./stream-track";
 import { snapToTrack, buildSpeedTrail } from "./track-utils";
 
 const TRAIL_MAX = 3000;
@@ -11,7 +12,7 @@ const TRACK_COLOR = "rgba(255, 255, 255, 0.35)";
 const MAP_UPDATE_INTERVAL = 100;
 
 const mgr = new TelemetryManager();
-const trackDef = getActiveTrack();
+const trackDef = getTrack(STREAM_TRACK_ID);
 
 const mapEl = document.getElementById("map")!;
 const map = L.map(mapEl, {

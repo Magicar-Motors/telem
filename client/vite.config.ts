@@ -9,6 +9,11 @@ export default defineConfig({
     port: 5173,
   },
   build: {
+    // The overlays resolve their track with a top-level await, which Vite's
+    // default target predates. Everything that renders these pages — OBS's
+    // embedded Chromium and the laptops running the dashboard — is well past
+    // es2022.
+    target: "es2022",
     rollupOptions: {
       input: {
         main: resolve(__dirname, "index.html"),

@@ -2,6 +2,7 @@ import "./stream.css";
 import { TelemetryManager } from "./telemetry";
 import { speedToColor, throttleToColor, rpmToColor } from "./track-utils";
 import { SERVER_URL } from "./server-url";
+import { STREAM_TRACK_ID } from "./stream-track";
 
 const KMH_TO_MPH = 0.621371;
 const MAX_MPH = 120;
@@ -11,7 +12,7 @@ const TPS_SEGMENTS = 20;
 const RPM_SEGMENTS = 28;
 
 const mgr = new TelemetryManager();
-const trackId = new URLSearchParams(window.location.search).get("track") ?? "sonoma";
+const trackId = STREAM_TRACK_ID;
 
 interface Session {
   id: string;
@@ -101,6 +102,7 @@ const rpmColorFn = (i: number, n: number) => rpmToColor((i + 1) / n);
 const container = document.getElementById("gauges")!;
 // Append gauges after the driver label
 container.insertAdjacentHTML("beforeend", `
+  <div class="gauge-telem" id="telem-clock">--:--:--.---</div>
   <div class="gauge">
     <div class="gauge-label">SPEED</div>
     <div class="gauge-header">
@@ -141,6 +143,29 @@ const mphVal = document.getElementById("gauge-mph")!;
 const rpmVal = document.getElementById("gauge-rpm")!;
 const tpsVal = document.getElementById("gauge-tps")!;
 const brakeEl = document.getElementById("gauge-brake")!;
+const telemClockEl = document.getElementById("telem-clock")!;
+
+// The ts the Jetson stamped on the newest tick, rendered in the same local-time
+// convention as the clockoverlay burned into the video (see
+// streaming/start_streaming.sh) so the two can be read off the frame directly:
+// same source clock, so the gap between them is the telemetry-vs-video path
+// difference, not clock drift. Ticks on its own timer rather than the render
+// loop, so a stalled feed shows as a frozen clock instead of a stale-but-moving
+// one.
+const TELEM_CLOCK_PERIOD_MS = 100;
+
+function fmtLocal(epochMs: number): string {
+  const d = new Date(epochMs);
+  const p = (n: number, width = 2): string => String(n).padStart(width, "0");
+  return `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}.${p(d.getMilliseconds(), 3)}`;
+}
+
+function updateTelemClock(): void {
+  const ts = mgr.lastTsNum;
+  telemClockEl.textContent = ts === 0 ? "--:--:--.---" : fmtLocal(ts);
+}
+
+setInterval(updateTelemClock, TELEM_CLOCK_PERIOD_MS);
 
 function update(): void {
   const speedSmoothed = mgr.getSmoothed("gps_speed") ?? mgr.getSmoothed("speed");

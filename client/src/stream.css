@@ -93,6 +93,16 @@ html, body {
   gap: 2px;
 }
 
+/* Telemetry ts, read against the clockoverlay burned in at capture. */
+.gauge-telem {
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 1px;
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.9);
+}
+
 .gauge-label {
   font-size: 8px;
   font-weight: 700;
