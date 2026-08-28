@@ -2,7 +2,8 @@
 
 **Written 2026-08-28.** Everything here is left over from the 2026-08-23 track day
 and needs the car powered on and back on the tailnet. Work top to bottom; item 1
-gates item 2.
+gates item 2, and item 5 is the one that matters if the car ever doesn't come
+back — the only copy of both track days' telemetry is on it.
 
 ---
 
@@ -71,10 +72,11 @@ print("laps after trim:", len(patch({"laps": keep})["laps"]))   # want 19
 PY
 ```
 
-## 3. Repair `Jacky Track Day 2 Stint 1`
+## 3. Repair `Jacky Track D2S1`
 
-That session recorded straight through the 2026-08-23 seq reset, so its lap
-pointers are broken:
+8/23 08:26, 4 laps. (Named `Jacky Track Day 2 Stint 1` when the damage was
+found; renamed later that day, same session.) It recorded straight through the
+2026-08-23 seq reset, so its lap pointers are broken:
 
 ```
 lap 2  seq 7266182..8236    start > end
@@ -102,6 +104,39 @@ the server was down — and no seq repair recovers those.
 `~/pre-pull-20260823/` on the car holds three files moved aside before the pull
 (`udp-sender.ts`, `udp-sender.test.ts`, `wal.ts.bak-*`). All three were verified
 byte-identical to what's now in git, so the directory can be deleted.
+
+## 5. Pull both track days into a local archive
+
+**Do this before anything risks the car.** Eleven sessions across 8/22 and 8/23
+exist only in the car's WAL. The ground station keeps no copy — the receiver is
+a pass-through with no disk writes, and the review page's IndexedDB is a
+read-through cache holding whatever that browser happened to fetch.
+
+As of 2026-08-28 the Safari cache on `localhost:5173` holds all 11 sessions'
+metadata (lap numbers, times, deltas) but only the handful of lap traces that
+were actually opened — one of nine on `Sudesh Track D2S3`, for instance.
+
+```
+http://localhost:5173/review.html?track=sonoma_bypass
+```
+
+Two things bite here, both worth knowing before you conclude data is missing:
+
+- **The track filter.** The page defaults to `?track=sonoma` and lists only
+  sessions on that track. All 11 were moved to `sonoma_bypass` on 8/22, so
+  without the query param the list looks empty.
+- **The origin.** Cache is per-origin, so `:5173` and `:5174` (and `localhost`
+  vs `127.0.0.1`) are separate stores. `:5173` is the one OBS uses and the one
+  with the real cache. Stick to it.
+
+Then, per session: select it, click **SYNC ALL**, and wait for the sidebar
+counter to read `N cached / 0 uncached`. That pulls every lap's WAL range.
+
+When they're all synced, click **EXPORT** once. It walks the entire object
+store, so a single click captures all 11 sessions and every cached lap — the
+selected session only names the file, which makes the output look
+session-scoped when it isn't. Keep the `.telem` somewhere that isn't browser
+state; **IMPORT** on any origin restores it.
 
 ---
 
