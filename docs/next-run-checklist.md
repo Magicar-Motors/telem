@@ -2,8 +2,8 @@
 
 **Written 2026-08-28.** Everything here is left over from the 2026-08-23 track day
 and needs the car powered on and back on the tailnet. Work top to bottom; item 1
-gates item 2, and item 5 is the one that matters if the car ever doesn't come
-back — the only copy of both track days' telemetry is on it.
+gates item 2. Item 5 closes the last gap in the local archive; most of both
+track days is already safe in `archive/`.
 
 ---
 
@@ -13,6 +13,10 @@ The WAL seq fix is on the car's disk but **not running** — the pull landed on
 2026-08-23 while the service was already up, and the car went off the tailnet
 before it could be restarted. Until this happens the car can still restart its
 seq counter at 0, which is what killed the live feed for 37 minutes that day.
+
+The code is already on the car — the pull landed before it dropped off — and no
+commit since has touched `server/`, so this is a restart, not a redeploy. Don't
+pull; just restart.
 
 ```bash
 ssh -t gearados@gearados-nx 'sudo systemctl restart telem-server'   # needs your password
@@ -39,9 +43,13 @@ newest generation was empty and it's worth knowing how often that happens.
 ## 2. Stop and trim `JACKY DAY 2`
 
 Session `d4163a30-b9e0-45e4-97f7-7e834c05dd2b`, created **2026-03-22**, still
-`running: true`. It has been absorbing every lap driven since, including all of
-the August track day — 73 laps and counting, on track `sonoma`. Anything driven
-before this is fixed lands in it too, so do this early.
+`running: true`. It has been absorbing every lap driven since, including both
+August track days — 73 laps when last checked on 8/23 and it kept collecting
+through that afternoon, so expect more. It sits on track `sonoma` while the
+driving was on the bypass, but the two share a start/finish line, so detection
+fires anyway. Anything driven before this is fixed lands in it too, so do it
+early. The `endSeq 3988590` assertion below is the guard: it pins lap 19 no
+matter how many junk laps piled up after it.
 
 Keep laps 1–19 (the real March 22 session, last one ends `endSeq 3988590` =
 `2026-03-22T22:59Z`). Drop 20–73: lap 20 is a 152-day "lap" spanning March to
@@ -95,9 +103,27 @@ cd ~/repos/telem/server && npx tsx scripts/repair-sessions.ts --data-dir ./data
 sudo systemctl start telem-server
 ```
 
-Then spot-check that laps 3–4 replay as August data, not 1970. The 757 s and
-1267 s lap *times* are a separate casualty — the detector lost crossings while
-the server was down — and no seq repair recovers those.
+Then spot-check that laps 3–4 replay as August data, not 1970.
+
+**The browser cache needs refreshing afterwards, and the archive is wrong for
+these laps.** Verified against `archive/2026-08-22_23-sonoma-bypass.telem`:
+
+```
+/lap/7249273-7266182   16910 ticks   8/23 15:26 → 15:32     correct
+/lap/7266182-8236          0 ticks                          empty (start > end)
+/lap/8236-15501         7266 ticks   1970-01-01 → 3/19      wrong era
+/lap/15501-30982       15482 ticks   3/19 → 3/19            wrong era
+```
+
+Repair rewrites the seq pointers, so the lap cache keys (`/lap/{start}-{end}`)
+change and the page fetches fresh — the wrong entries are orphaned rather than
+served. To be sure: select the session, hit **SYNC** to pull the corrected
+detail, then **SYNC ALL** for the traces. Note `SYNC ALL` skips laps that are
+already cached, so if any repaired pointer happens to land on its old value,
+select that lap and use **SYNC**, which force-refreshes the selected lap.
+
+The 757 s and 1267 s lap *times* are a separate casualty — the detector lost
+crossings while the server was down — and no seq repair recovers those.
 
 ## 4. Cleanup
 
@@ -105,20 +131,23 @@ the server was down — and no seq repair recovers those.
 (`udp-sender.ts`, `udp-sender.test.ts`, `wal.ts.bak-*`). All three were verified
 byte-identical to what's now in git, so the directory can be deleted.
 
-## 5. Pull both track days into a local archive
+## 5. Close the gap in the archive
 
-**Do this before anything risks the car.** Eleven sessions across 8/22 and 8/23
-exist only in the car's WAL. The ground station keeps no copy — the receiver is
-a pass-through with no disk writes, and the review page's IndexedDB is a
-read-through cache holding whatever that browser happened to fetch.
-
-As of 2026-08-28 the Safari cache on `localhost:5173` holds all 11 sessions'
-metadata (lap numbers, times, deltas) but only the handful of lap traces that
-were actually opened — one of nine on `Sudesh Track D2S3`, for instance.
+`archive/2026-08-22_23-sonoma-bypass.telem` already holds both track days:
+11 sessions, 66 of 74 lap traces, ~1.0M ticks. Complete lap times everywhere.
+**What's missing is 8 of 9 lap traces on `Sudesh Track D2S3`** (8/23 15:55) —
+it was mid-sync when the export was taken.
 
 ```
 http://localhost:5173/review.html?track=sonoma_bypass
 ```
+
+Select `Sudesh Track D2S3`, click **SYNC ALL**, wait for the sidebar counter to
+read `9 cached / 0 uncached`, then click **EXPORT** and replace the file in
+`archive/` (see that directory's README for the `gzip -9` recompression step).
+Item 3 adds a second reason to re-export: the archived traces for
+`Jacky Track D2S1` laps 3–4 are March data, and only a post-repair sync fixes
+them.
 
 Two things bite here, both worth knowing before you conclude data is missing:
 
@@ -129,14 +158,16 @@ Two things bite here, both worth knowing before you conclude data is missing:
   vs `127.0.0.1`) are separate stores. `:5173` is the one OBS uses and the one
   with the real cache. Stick to it.
 
-Then, per session: select it, click **SYNC ALL**, and wait for the sidebar
-counter to read `N cached / 0 uncached`. That pulls every lap's WAL range.
+`SYNC ALL` is per-session and skips laps that are already cached, so it's cheap
+to re-run. `EXPORT` always dumps the whole store regardless of which session is
+selected — the selection only names the file.
 
-When they're all synced, click **EXPORT** once. It walks the entire object
-store, so a single click captures all 11 sessions and every cached lap — the
-selected session only names the file, which makes the output look
-session-scoped when it isn't. Keep the `.telem` somewhere that isn't browser
-state; **IMPORT** on any origin restores it.
+### Not archived, if you ever want them
+
+The 18 older `sonoma` sessions (March track days, plus the `JACKY DAY 2` from
+item 2) exist in the archive as list metadata only — names and ids, no lap data.
+They live on the car's WAL. Same sync-and-export pass at
+`?track=sonoma` would capture them.
 
 ---
 

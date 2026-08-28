@@ -48,10 +48,21 @@ Two quirks worth knowing before you trust what you see:
   `Grace Track D1S1`. The session list was cached after, so the sidebar and the
   detail view disagree. Same sessions, same ids.
 
-Also present, and expected to look wrong: `Jacky Track D2S1`'s lap pointers span
-the 2026-08-23 seq reset (`/lap/7266182-8236` runs backwards, `/lap/8236-15501`
-resolves to March entries). That damage is on the car too; the repair is item 3
-of the checklist.
+**Three lap entries in here hold the wrong data**, inherited from the 2026-08-23
+seq reset on the car. `Jacky Track D2S1`'s pointers span the reset, so two of its
+laps resolve to March entries and one is empty:
+
+```
+/lap/7249273-7266182   16910 ticks   8/23 15:26 → 15:32     correct
+/lap/7266182-8236          0 ticks                          empty (start > end)
+/lap/8236-15501         7266 ticks   1970-01-01 → 3/19      wrong era
+/lap/15501-30982       15482 ticks   3/19 → 3/19            wrong era
+```
+
+Anything charted from those two laps is March driving mislabelled as August. The
+fix is car-side (item 3 of the checklist) and changes the seq pointers, which
+changes the cache keys — so after repairing, re-sync that session and re-export,
+and these entries become orphans rather than answers.
 
 ## Adding to this directory
 
