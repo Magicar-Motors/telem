@@ -79,6 +79,39 @@ describe("UdpReceiver", () => {
     expect(rx.stats.lastRecvAt).toBeGreaterThan(0);
   });
 
+  it("re-anchors when the car's seq counter restarts", () => {
+    // The car ran to 7.2M, its WAL came up without recovering that mark, and it
+    // began numbering from zero again. Without this the feed dies silently:
+    // every new datagram reads as stale and lands in `reordered` forever.
+    rx.handle(pack({ seq: 7_280_077, ts: 1_800_000_000_000, d: { rpm: 1000 } }));
+    rx.handle(pack({ seq: 1, ts: 1_800_000_000_040, d: { rpm: 1100 } }));
+    rx.handle(pack({ seq: 2, ts: 1_800_000_000_080, d: { rpm: 1200 } }));
+
+    expect(emitted.map((t) => t.seq)).toEqual([7_280_077, 1, 2]);
+    expect(rx.stats.resets).toBe(1);
+    expect(rx.stats.lastSeq).toBe(2);
+    // Re-anchoring must not book the 7.2M seq drop as loss.
+    expect(rx.stats.lost).toBe(0);
+  });
+
+  it("still discards a plain reorder rather than treating it as a reset", () => {
+    rx.handle(pack({ seq: 500, ts: 1_800_000_000_000, d: { rpm: 1000 } }));
+    rx.handle(pack({ seq: 499, ts: 1_800_000_000_040, d: { rpm: 1100 } }));
+    expect(rx.stats.reordered).toBe(1);
+    expect(rx.stats.resets).toBe(0);
+    expect(emitted.map((t) => t.seq)).toEqual([500]);
+  });
+
+  it("does not re-anchor on an old datagram arriving very late", () => {
+    // Far enough back to clear the gap, but its ts is older — that's a straggler
+    // from before, not a restart.
+    rx.handle(pack({ seq: 50_000, ts: 1_800_000_000_000, d: { rpm: 1000 } }));
+    rx.handle(pack({ seq: 10, ts: 1_799_999_000_000, d: { rpm: 1100 } }));
+    expect(rx.stats.resets).toBe(0);
+    expect(rx.stats.reordered).toBe(1);
+    expect(emitted.map((t) => t.seq)).toEqual([50_000]);
+  });
+
   it("drops datagrams when the test hook is on", () => {
     const dropping = new UdpReceiver({ testDropPct: 100 });
     for (let seq = 1; seq <= 10; seq++) dropping.handle(tick(seq));

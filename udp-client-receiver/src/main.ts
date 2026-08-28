@@ -17,13 +17,21 @@ const UDP_PORT = parseInt(process.env.RECEIVER_UDP_PORT ?? "4402", 10);
 const HTTP_HOST = process.env.RECEIVER_HTTP_HOST ?? "127.0.0.1";
 const LEASE_TTL_MS = parseInt(process.env.LEASE_TTL_MS ?? "15000", 10);
 const TEST_DROP_PCT = parseFloat(process.env.RECEIVER_TEST_DROP_PCT ?? "0");
+// Held here rather than in the browser so every page on this machine shares one
+// delay line.
+const DELAY_MS = parseInt(process.env.RECEIVER_DELAY_MS ?? "1000", 10);
 
 async function main(): Promise<void> {
-  const receiver = new UdpReceiver({ testDropPct: TEST_DROP_PCT });
+  const delayMs = Number.isFinite(DELAY_MS) && DELAY_MS > 0 ? DELAY_MS : 0;
+  const receiver = new UdpReceiver({ testDropPct: TEST_DROP_PCT, delayMs });
   await receiver.bind(UDP_PORT);
   console.log(`[udp] listening on 0.0.0.0:${UDP_PORT}`);
   if (TEST_DROP_PCT > 0) {
     console.warn(`[udp] TEST MODE — discarding ${TEST_DROP_PCT}% of datagrams`);
+  }
+  if (delayMs > 0) {
+    // Without this line, the lag the dashboard reports looks like a bad link.
+    console.log(`[udp] holding ticks ${delayMs}ms to match video latency`);
   }
 
   const lease = new LeaseKeeper({ jetsonUrl: JETSON_URL, udpPort: UDP_PORT, ttlMs: LEASE_TTL_MS });

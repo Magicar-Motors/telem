@@ -57,6 +57,7 @@ subscribers at 4.
 | `RECEIVER_UDP_PORT` | `4402` | Ticks in from the car |
 | `RECEIVER_HTTP_HOST` | `127.0.0.1` | Loopback only by design |
 | `LEASE_TTL_MS` | `15000` | Renewed every TTL/3 |
+| `RECEIVER_DELAY_MS` | `1000` | Hold ticks this long before publishing, to match video latency |
 | `RECEIVER_TEST_DROP_PCT` | `0` | Dev only — discard N% of datagrams |
 
 ## Endpoints
