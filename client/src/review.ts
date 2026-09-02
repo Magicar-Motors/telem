@@ -9,6 +9,14 @@ import { createDropdown } from "./dropdown";
 import { formatTime, formatDate, getBestLapTime } from "./format";
 import { SERVER_URL } from "./server-url";
 import { unpack } from "msgpackr/unpack";
+import {
+  createGCircleCanvas,
+  drawGCircle,
+  emaStep,
+  toDisplayAxes,
+  G_TRAIL_LEN,
+  type GPoint,
+} from "./gcircle-renderer";
 
 const TILES_SAT = "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}";
 const TILE_OPTS_SAT: L.TileLayerOptions = { maxZoom: 20 };
@@ -37,12 +45,9 @@ let lapGy: number[] = [];
 let lapRpms: number[] = [];
 let lapGears: number[] = [];
 let lapBrakes: number[] = [];
-let lapOilTempsC: number[] = [];
-let lapOilPressures: number[] = [];
 let lapTimestamps: number[] = [];
 let trailMode: "speed" | "throttle" | "rpm" | "gear" | "brake" = "speed";
 let allLapsLines: L.Polyline[] = [];
-let trailHitAreas: L.Polyline[] = [];
 let aggVisible: Set<number> = new Set();
 let aggHighlight = -1; // index of highlighted lap, -1 = auto-best
 
@@ -207,144 +212,96 @@ drawTrackOverlays();
 let trailLines: L.Polyline[] = [];
 let posMarker: L.Marker | null = null;
 
-// ── G-force canvas ──
-const gCanvas = document.createElement("canvas");
-gcircleEl.appendChild(gCanvas);
-const gCtx = gCanvas.getContext("2d")!;
-let gW = 0, gH = 0;
+// ── Trail hover ──
+// Bound to the map, not the trail, so a near miss still reads out. Past
+// SNAP_MAX_PX the cursor counts as off the racing line and the tooltip hides.
+const SNAP_MAX_PX = 40;
 
-new ResizeObserver((entries) => {
-  for (const entry of entries) {
-    const r = entry.contentRect;
-    const dpr = window.devicePixelRatio || 1;
-    gW = r.width; gH = r.height;
-    gCanvas.width = gW * dpr; gCanvas.height = gH * dpr;
-    gCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+const trailTooltip = L.tooltip({ permanent: false, direction: "top", offset: [0, -10], className: "trail-tooltip" });
+
+const trailFormat: Record<TrailMode, (i: number) => string> = {
+  speed: (i) => `${Math.round(lapSpeeds[i] * KMH_TO_MPH)} mph`,
+  throttle: (i) => `${Math.round(lapThrottles[i])}% tps`,
+  rpm: (i) => `${Math.round(lapRpms[i])} rpm`,
+  gear: (i) => `gear ${Math.round(lapGears[i])}`,
+  brake: (i) => lapBrakes[i] > 0.5 ? "brake ON" : "brake OFF",
+};
+
+function hideTrailTooltip() {
+  if (map.hasLayer(trailTooltip as any)) map.removeLayer(trailTooltip as any);
+}
+
+function nearestLapIdx(lat: number, lon: number): number {
+  // A degree of longitude is shorter than one of latitude, so weight it before
+  // comparing — otherwise the match skews east/west near a hairpin.
+  const lonScale = Math.cos((lat * Math.PI) / 180);
+  let bestDist = Infinity;
+  let best = 0;
+  for (let i = 0; i < lapCoords.length; i++) {
+    const dlat = lapCoords[i][0] - lat;
+    const dlon = (lapCoords[i][1] - lon) * lonScale;
+    const d = dlat * dlat + dlon * dlon;
+    if (d < bestDist) { bestDist = d; best = i; }
   }
-}).observe(gcircleEl);
+  return best;
+}
 
-const MAX_G = 1.0;
-const RING_STEPS = [0.25, 0.5, 0.75, 1.0];
-const G_TRAIL_LEN = 200;
-const G_EMA_ALPHA = 0.15;
+map.on("mousemove", (e: L.LeafletMouseEvent) => {
+  if (lapCoords.length === 0) { hideTrailTooltip(); return; }
 
-let gTrail: { x: number; y: number }[] = [];
-let gEmaX = 0, gEmaY = 0, gEmaInit = false;
+  const idx = nearestLapIdx(e.latlng.lat, e.latlng.lng);
+  const snapped = L.latLng(lapCoords[idx][0], lapCoords[idx][1]);
+  if (map.latLngToContainerPoint(snapped).distanceTo(e.containerPoint) > SNAP_MAX_PX) {
+    hideTrailTooltip();
+    return;
+  }
+
+  seekEl.value = String(idx);
+  updateSeek(idx);
+
+  trailTooltip.setLatLng(snapped).setContent(trailFormat[trailMode](idx));
+  if (!map.hasLayer(trailTooltip as any)) (trailTooltip as any).addTo(map);
+});
+
+map.on("mouseout", hideTrailTooltip);
+
+// ── G-force canvas ──
+const gCanvas = createGCircleCanvas(gcircleEl);
+
+let gTrail: GPoint[] = [];
+let gEma: GPoint | null = null;
 let gLastIdx = -1;
 
 function resetGTrail() {
   gTrail = [];
-  gEmaInit = false;
+  gEma = null;
   gLastIdx = -1;
 }
 
-function drawGCircle(gx: number, gy: number, seekIdx = -1) {
-  if (gW === 0 || gH === 0) return;
+function updateGCircle(gx: number, gy: number, seekIdx = -1) {
+  if (gCanvas.w === 0 || gCanvas.h === 0) return;
 
-  const latG = -gy;
-  const lonG = -gx;
-
-  // Build trail from EWMA-smoothed points
+  // Scrubbing backwards or jumping past the trail window means the EWMA has to
+  // be replayed from scratch; a short forward step can just extend it.
   if (seekIdx >= 0 && lapGx.length > 0) {
-    // If scrubbing backwards or to a different region, rebuild trail
     if (seekIdx < gLastIdx || seekIdx - gLastIdx > G_TRAIL_LEN) {
       gTrail = [];
-      gEmaInit = false;
-      const start = Math.max(0, seekIdx - G_TRAIL_LEN + 1);
-      for (let i = start; i <= seekIdx; i++) {
-        const rx = -(lapGy[i] ?? 0);
-        const ry = -(lapGx[i] ?? 0);
-        if (!gEmaInit) { gEmaX = rx; gEmaY = ry; gEmaInit = true; }
-        else { gEmaX = G_EMA_ALPHA * rx + (1 - G_EMA_ALPHA) * gEmaX; gEmaY = G_EMA_ALPHA * ry + (1 - G_EMA_ALPHA) * gEmaY; }
-        gTrail.push({ x: gEmaX, y: gEmaY });
+      gEma = null;
+      for (let i = Math.max(0, seekIdx - G_TRAIL_LEN + 1); i <= seekIdx; i++) {
+        gEma = emaStep(gEma, toDisplayAxes(lapGx[i] ?? 0, lapGy[i] ?? 0));
+        gTrail.push(gEma);
       }
     } else {
-      // Forward scrub: append new points
       for (let i = gLastIdx + 1; i <= seekIdx; i++) {
-        const rx = -(lapGy[i] ?? 0);
-        const ry = -(lapGx[i] ?? 0);
-        if (!gEmaInit) { gEmaX = rx; gEmaY = ry; gEmaInit = true; }
-        else { gEmaX = G_EMA_ALPHA * rx + (1 - G_EMA_ALPHA) * gEmaX; gEmaY = G_EMA_ALPHA * ry + (1 - G_EMA_ALPHA) * gEmaY; }
-        gTrail.push({ x: gEmaX, y: gEmaY });
+        gEma = emaStep(gEma, toDisplayAxes(lapGx[i] ?? 0, lapGy[i] ?? 0));
+        gTrail.push(gEma);
       }
       if (gTrail.length > G_TRAIL_LEN) gTrail.splice(0, gTrail.length - G_TRAIL_LEN);
     }
     gLastIdx = seekIdx;
   }
 
-  gCtx.clearRect(0, 0, gW, gH);
-
-  const cx = gW / 2, cy = gH / 2;
-  const radius = Math.min(cx, cy) - 20;
-  const scale = radius / MAX_G;
-
-  // rings
-  gCtx.lineWidth = 1;
-  for (const g of RING_STEPS) {
-    gCtx.beginPath();
-    gCtx.arc(cx, cy, g * scale, 0, Math.PI * 2);
-    gCtx.strokeStyle = "rgba(255,255,255,0.06)";
-    gCtx.stroke();
-  }
-
-  // crosshair
-  gCtx.strokeStyle = "rgba(255,255,255,0.1)";
-  gCtx.beginPath();
-  gCtx.moveTo(cx - radius, cy); gCtx.lineTo(cx + radius, cy);
-  gCtx.moveTo(cx, cy - radius); gCtx.lineTo(cx, cy + radius);
-  gCtx.stroke();
-
-  // tick marks
-  for (const g of RING_STEPS) {
-    const r = g * scale;
-    gCtx.beginPath();
-    gCtx.moveTo(cx + r, cy - 3); gCtx.lineTo(cx + r, cy + 3);
-    gCtx.moveTo(cx - r, cy - 3); gCtx.lineTo(cx - r, cy + 3);
-    gCtx.moveTo(cx - 3, cy + r); gCtx.lineTo(cx + 3, cy + r);
-    gCtx.moveTo(cx - 3, cy - r); gCtx.lineTo(cx + 3, cy - r);
-    gCtx.stroke();
-  }
-
-  // labels
-  gCtx.fillStyle = "rgba(255,255,255,0.2)";
-  gCtx.font = "9px monospace";
-  gCtx.textAlign = "left"; gCtx.textBaseline = "bottom";
-  for (const g of RING_STEPS) gCtx.fillText(`${g}g`, cx + 3, cy - g * scale - 2);
-
-  gCtx.fillStyle = "rgba(255,107,53,0.5)";
-  gCtx.font = "bold 9px monospace";
-  gCtx.textAlign = "center";
-  gCtx.textBaseline = "top"; gCtx.fillText("BRAKE", cx, cy - radius - 16);
-  gCtx.textBaseline = "bottom"; gCtx.fillText("ACCEL", cx, cy + radius + 16);
-  gCtx.textAlign = "left"; gCtx.textBaseline = "middle"; gCtx.fillText("L", cx - radius - 14, cy);
-  gCtx.textAlign = "right"; gCtx.fillText("R", cx + radius + 14, cy);
-
-  // trail
-  for (let i = 0; i < gTrail.length; i++) {
-    const t = gTrail[i];
-    const alpha = 0.03 + (i / gTrail.length) * 0.35;
-    gCtx.beginPath();
-    gCtx.arc(cx + t.x * scale, cy + t.y * scale, 1.5, 0, Math.PI * 2);
-    gCtx.fillStyle = `rgba(255, 107, 53, ${alpha})`;
-    gCtx.fill();
-  }
-
-  // current dot
-  const curX = gTrail.length > 0 ? gEmaX : latG;
-  const curY = gTrail.length > 0 ? gEmaY : lonG;
-  const px = cx + curX * scale;
-  const py = cy + curY * scale;
-  gCtx.beginPath(); gCtx.arc(px, py, 8, 0, Math.PI * 2);
-  gCtx.fillStyle = "rgba(255,107,53,0.12)"; gCtx.fill();
-  gCtx.beginPath(); gCtx.arc(px, py, 4, 0, Math.PI * 2);
-  gCtx.fillStyle = "#ff6b35"; gCtx.fill();
-  gCtx.strokeStyle = "#fff"; gCtx.lineWidth = 1.5; gCtx.stroke();
-
-  // magnitude
-  const mag = Math.sqrt(curX * curX + curY * curY);
-  gCtx.fillStyle = "#eee"; gCtx.font = "bold 11px monospace";
-  gCtx.textAlign = "right"; gCtx.textBaseline = "top";
-  gCtx.fillText(`${mag.toFixed(2)}g`, gW - 6, 6);
+  drawGCircle(gCanvas, gEma ?? toDisplayAxes(gx, gy), gTrail);
 }
 
 // ── Gauges ──
@@ -392,24 +349,6 @@ brakeWrap.className = "review-gauge";
 brakeWrap.innerHTML = `<div class="review-gauge-label">制動 BRAKE</div><div class="review-brake" id="rv-brake">${Array(10).fill('<div class="review-brake-seg"></div>').join("")}</div>`;
 gaugesEl.appendChild(brakeWrap);
 const brakeEl = brakeWrap.querySelector("#rv-brake")!;
-
-// Engine health readouts
-const engineGauges = document.createElement("div");
-engineGauges.className = "review-engine-gauges";
-engineGauges.innerHTML = `
-  <div class="review-gauge review-gauge-compact">
-    <div class="review-gauge-label">油温 OIL TEMP</div>
-    <div class="review-gauge-header"><span class="review-gauge-value" id="rv-oil-temp">--</span><span class="review-gauge-unit">\u00B0F</span></div>
-  </div>
-  <div class="review-gauge review-gauge-compact">
-    <div class="review-gauge-label">油圧 OIL PRESS</div>
-    <div class="review-gauge-header"><span class="review-gauge-value" id="rv-oil-pressure">--</span><span class="review-gauge-unit">PSI</span></div>
-  </div>
-`;
-gaugesEl.appendChild(engineGauges);
-const oilTempValueEl = engineGauges.querySelector("#rv-oil-temp")!;
-const oilPressureValueEl = engineGauges.querySelector("#rv-oil-pressure")!;
-
 
 function updateGaugeSegs(track: HTMLElement, fraction: number, colorFn: (idx: number, total: number) => string) {
   const segs = track.children;
@@ -885,20 +824,18 @@ function clearLapView() {
   if (posMarker) { posMarker.remove(); posMarker = null; }
   lapListEl.innerHTML = "";
   lapCoords = []; lapSpeeds = []; lapThrottles = []; lapGx = []; lapGy = [];
-  lapRpms = []; lapGears = []; lapBrakes = []; lapOilTempsC = []; lapOilPressures = [];
+  lapRpms = []; lapGears = []; lapBrakes = [];
   lapTimestamps = []; lapTicks = [];
   seekEl.value = "0"; seekTimeEl.textContent = "0:00.000"; seekEpochEl.textContent = "--";
   speedValueEl.textContent = "--";
   throttleValueEl.textContent = "--";
   rpmValueEl.textContent = "--";
-  oilTempValueEl.textContent = "--";
-  oilPressureValueEl.textContent = "--";
   brakeEl.classList.remove("active");
   updateGaugeSegs(speedSegTrack, 0, () => "");
   updateGaugeSegs(tpsSegTrack, 0, () => "");
   updateGaugeSegs(rpmSegTrack, 0, () => "");
   resetGTrail();
-  drawGCircle(0, 0);
+  updateGCircle(0, 0);
 }
 
 // ── Laps ──
@@ -965,7 +902,7 @@ async function selectLap(idx: number, forceRefresh = false) {
   renderLapList();
 
   const lap = session.laps[idx];
-  const channels = "gps_lat,gps_lon,gps_speed,gps_heading,gps_satellites,throttle_pos,g_force_x,g_force_y,rpm,gear,brake,coolant_temp,manifold_pressure,oil_temp,oil_pressure";
+  const channels = "gps_lat,gps_lon,gps_speed,gps_heading,gps_satellites,throttle_pos,g_force_x,g_force_y,rpm,gear,brake,coolant_temp,manifold_pressure";
   const cacheKey = `/lap/${lap.startSeq}-${lap.endSeq}`;
 
   let fetchPromise = inflightPromises.get(cacheKey);
@@ -976,7 +913,7 @@ async function selectLap(idx: number, forceRefresh = false) {
     if (!cached || forceRefresh) {
       lapTicks = []; lapCoords = []; lapSpeeds = []; lapThrottles = [];
       lapGx = []; lapGy = []; lapRpms = []; lapGears = []; lapBrakes = [];
-      lapOilTempsC = []; lapOilPressures = []; lapTimestamps = [];
+      lapTimestamps = [];
       drawTrail();
       seekEl.max = "0"; seekEl.value = "0";
       updateSeek(0);
@@ -989,7 +926,7 @@ async function selectLap(idx: number, forceRefresh = false) {
     // Reusing inflight fetch — clear display and show loading
     lapTicks = []; lapCoords = []; lapSpeeds = []; lapThrottles = [];
     lapGx = []; lapGy = []; lapRpms = []; lapGears = []; lapBrakes = [];
-    lapOilTempsC = []; lapOilPressures = []; lapTimestamps = [];
+    lapTimestamps = [];
     drawTrail();
     seekEl.max = "0"; seekEl.value = "0";
     updateSeek(0);
@@ -1002,7 +939,7 @@ async function selectLap(idx: number, forceRefresh = false) {
   // Ticks are already grouped by timestamp — just carry forward and extract arrays
   const latest: Record<string, number> = {};
   lapCoords = []; lapSpeeds = []; lapThrottles = []; lapGx = []; lapGy = [];
-  lapRpms = []; lapGears = []; lapBrakes = []; lapOilTempsC = []; lapOilPressures = [];
+  lapRpms = []; lapGears = []; lapBrakes = [];
   lapTimestamps = [];
 
   for (const tick of lapTicks) {
@@ -1018,8 +955,6 @@ async function selectLap(idx: number, forceRefresh = false) {
       lapRpms.push(latest.rpm ?? 0);
       lapGears.push(latest.gear ?? 0);
       lapBrakes.push(latest.brake ?? 0);
-      lapOilTempsC.push(latest.oil_temp ?? Number.NaN);
-      lapOilPressures.push(latest.oil_pressure ?? Number.NaN);
       lapTimestamps.push(tick.ts);
     }
   }
@@ -1186,10 +1121,9 @@ function drawAggregateTrails(): void {
 }
 
 function drawTrail() {
+  hideTrailTooltip();
   for (const l of trailLines) l.remove();
   trailLines = [];
-  for (const h of trailHitAreas) h.remove();
-  trailHitAreas = [];
   if (lapCoords.length < 2) return;
 
   const valuesMap: Record<TrailMode, number[]> = {
@@ -1235,44 +1169,6 @@ function drawTrail() {
       trailLines.push(line);
     }
   }
-
-  // Invisible wide polylines per segment for hover interaction
-  const tooltip = L.tooltip({ permanent: false, direction: "top", offset: [0, -10], className: "trail-tooltip" });
-
-  for (const seg of segments) {
-    const hitLine = L.polyline(seg as L.LatLngExpression[], {
-      color: "transparent", weight: 16, opacity: 0, interactive: true,
-    }).addTo(map);
-    trailHitAreas.push(hitLine);
-
-    hitLine.on("mousemove", (e: L.LeafletMouseEvent) => {
-      const { lat, lng } = e.latlng;
-      let minDist = Infinity;
-      let nearIdx = 0;
-      for (let i = 0; i < lapCoords.length; i++) {
-        const dlat = lapCoords[i][0] - lat;
-        const dlng = lapCoords[i][1] - lng;
-        const d = dlat * dlat + dlng * dlng;
-        if (d < minDist) { minDist = d; nearIdx = i; }
-      }
-      seekEl.value = String(nearIdx);
-      updateSeek(nearIdx);
-
-      const formatMap: Record<TrailMode, (i: number) => string> = {
-        speed: (i) => `${Math.round(lapSpeeds[i] * KMH_TO_MPH)} mph`,
-        throttle: (i) => `${Math.round(lapThrottles[i])}% tps`,
-        rpm: (i) => `${Math.round(lapRpms[i])} rpm`,
-        gear: (i) => `gear ${Math.round(lapGears[i])}`,
-        brake: (i) => lapBrakes[i] > 0.5 ? "brake ON" : "brake OFF",
-      };
-      tooltip.setLatLng(e.latlng).setContent(formatMap[trailMode](nearIdx));
-      if (!map.hasLayer(tooltip as any)) (tooltip as any).addTo(map);
-    });
-
-    hitLine.on("mouseout", () => {
-      map.removeLayer(tooltip as any);
-    });
-  }
 }
 
 function clearSeekDisplay() {
@@ -1280,15 +1176,13 @@ function clearSeekDisplay() {
   seekTimeEl.textContent = "--";
   seekEpochEl.textContent = "";
   resetGTrail();
-  drawGCircle(0, 0);
+  updateGCircle(0, 0);
   speedValueEl.textContent = "--";
   updateGaugeSegs(speedSegTrack, 0, () => "");
   throttleValueEl.textContent = "--";
   updateGaugeSegs(tpsSegTrack, 0, () => "");
   rpmValueEl.textContent = "--";
   updateGaugeSegs(rpmSegTrack, 0, () => "");
-  oilTempValueEl.textContent = "--";
-  oilPressureValueEl.textContent = "--";
   brakeEl.classList.remove("active");
 }
 
@@ -1318,7 +1212,7 @@ function updateSeek(idx: number) {
   }
 
   // G-force dial
-  drawGCircle(lapGx[idx] ?? 0, lapGy[idx] ?? 0, idx);
+  updateGCircle(lapGx[idx] ?? 0, lapGy[idx] ?? 0, idx);
 
   // Speed gauge
   const spdKmh = lapSpeeds[idx] ?? 0;
@@ -1340,13 +1234,6 @@ function updateSeek(idx: number) {
   const rpmVal = lapRpms[idx] ?? 0;
   rpmValueEl.textContent = String(Math.round(rpmVal));
   updateGaugeSegs(rpmSegTrack, Math.min(1, rpmVal / MAX_RPM), (i, n) => rpmToColor((i + 1) / n));
-
-  const oilTempC = lapOilTempsC[idx];
-  const oilPressure = lapOilPressures[idx];
-  oilTempValueEl.textContent = Number.isFinite(oilTempC)
-    ? String(Math.round(oilTempC * 9 / 5 + 32))
-    : "--";
-  oilPressureValueEl.textContent = Number.isFinite(oilPressure) ? String(Math.round(oilPressure)) : "--";
 
   // Brake
   brakeEl.classList.toggle("active", (lapBrakes[idx] ?? 0) > 0.5);
