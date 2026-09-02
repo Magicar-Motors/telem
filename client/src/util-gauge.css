@@ -71,3 +71,8 @@
 .util-gauge.on-panel .util-gauge-value {
   font-size: 14px;
 }
+
+/* An envelope fitted over only part of the session reads low, so say so. */
+.util-gauge-foot.util-gauge-partial {
+  color: var(--amber);
+}

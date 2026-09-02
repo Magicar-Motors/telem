@@ -813,29 +813,46 @@ function renderSessionList() {
   });
 }
 
-/** Envelope and mean utilisation over the whole session. Cache-only: a session
- *  whose laps have not been fetched yet simply contributes what it has. */
+/** Envelope and mean utilisation over EVERY lap in the session, not just the
+ *  ones already viewed. Cache-first, so a warm cache costs nothing; a cold one
+ *  pulls the missing laps. Laps that cannot be fetched are reported as missing
+ *  coverage rather than silently narrowing the envelope. */
 async function computeSessionTraction(sess: Session): Promise<void> {
   if (tractionFor === sess.id) return;
   tractionFor = sess.id;
   sessionEnvelope = null;
   sessionMeanU = null;
   utilGauge.set(null);
+  if (sess.laps.length === 0) return;
 
-  const frames: LapFrame[] = [];
-  for (let i = 0; i < sess.laps.length; i++) {
-    const lap = sess.laps[i];
-    const data = await cacheGet<{ ticks: any[] }>(`/lap/${lap.startSeq}-${lap.endSeq}`);
-    if (!data) continue;
-    frames.push(buildLapFrame(data.ticks, i, lap.flag, activeCenterline()));
-  }
+  const settled = await Promise.allSettled(sess.laps.map(async (lap, i) => {
+    const cacheKey = `/lap/${lap.startSeq}-${lap.endSeq}`;
+    // Join the fetch selectLap may already have in flight rather than racing it.
+    let p = inflightPromises.get(cacheKey);
+    if (!p) {
+      p = fetchWalRange(lap.startSeq, lap.endSeq, "", cacheKey, false);
+      inflightPromises.set(cacheKey, p);
+      p.finally(() => inflightPromises.delete(cacheKey));
+    }
+    return buildLapFrame((await p).ticks, i, lap.flag, activeCenterline());
+  }));
+
   if (tractionFor !== sess.id) return; // a different session was picked meanwhile
+
+  const frames = settled
+    .filter((r): r is PromiseFulfilledResult<LapFrame> => r.status === "fulfilled")
+    .map((r) => r.value);
   if (frames.length === 0) return;
 
+  // Envelope over every lap — an out-lap still holds the peaks it holds.
+  // The mean is clean laps only: crawling out of the pits is not driving, and
+  // one long in-lap otherwise halves the session figure.
   const env = fitEnvelope(frames);
+  const scored = frames.filter((f) => f.flag === "clean");
+  const basis = scored.length > 0 ? scored : frames;
   let sum = 0;
   let n = 0;
-  for (const f of frames) {
+  for (const f of basis) {
     for (const x of f.samples) {
       if (x.gapMs > 250) continue;
       sum += utilization(Math.abs(x.aLat) / G_MS2, Math.max(-x.aLong, 0) / G_MS2, env);
@@ -847,7 +864,11 @@ async function computeSessionTraction(sess: Session): Promise<void> {
   utilGauge.set({
     meanU: sessionMeanU, muY: env.muY, muX: env.muX,
     mode: env.mode, sampleCount: n,
+    lapsUsed: basis.length, lapsTotal: sess.laps.length,
+    incomplete: frames.length < sess.laps.length,
   });
+  // The envelope may have widened now that every lap is in, so redraw.
+  updateSeek(parseInt(seekEl.value, 10));
 }
 
 async function selectSession(id: string) {

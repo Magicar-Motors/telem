@@ -12,7 +12,11 @@ export interface UtilGaugeState {
   muX: number;            // g
   mode: string;           // shown next to the number; the spec asks for this
   sampleCount: number;
-}
+  lapsUsed?: number;      // laps that fed the envelope
+  lapsTotal?: number;     // laps in the session
+  incomplete?: boolean;   // a lap could not be fetched, so coverage is short
+}                         // through no choice of ours — worth flagging apart
+                          // from a pit lap being correctly left out
 
 export interface UtilGauge {
   el: HTMLElement;
@@ -69,8 +73,12 @@ export function createUtilGauge(className = ""): UtilGauge {
 
     const pct = state.meanU * 100;
     valueEl.innerHTML = `${pct.toFixed(0)}<span class="util-gauge-unit">%</span>`;
+    const laps = state.lapsTotal
+      ? ` · ${state.lapsUsed ?? 0}/${state.lapsTotal} laps`
+      : "";
     foot.textContent =
-      `μy ${state.muY.toFixed(2)} μx ${state.muX.toFixed(2)} g · ${state.mode}`;
+      `μy ${state.muY.toFixed(2)} μx ${state.muX.toFixed(2)} g · ${state.mode}${laps}`;
+    foot.classList.toggle("util-gauge-partial", state.incomplete === true);
 
     const lit = Math.round(Math.min(1, state.meanU) * SEGMENTS);
     for (let i = 0; i < track.children.length; i++) {

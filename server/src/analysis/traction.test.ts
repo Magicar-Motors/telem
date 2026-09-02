@@ -90,6 +90,16 @@ describe("fitEnvelope", () => {
     expect(fitEnvelope([f]).muY).toBeCloseTo(1.1, 3);
   });
 
+  it("handles a whole session's worth of samples", () => {
+    // Math.max(...xs) throws RangeError past a few tens of thousands of args.
+    // Six real laps is ~17k samples; an all-time fit is far more.
+    const laps = Array.from({ length: 12 }, () =>
+      frameOf(20_000, (i) => ({ aLat: flat((i % 100) / 100) })));
+    const e = fitEnvelope(laps);
+    expect(e.sampleCount).toBe(240_000);
+    expect(e.muY).toBeCloseTo(0.99, 6);
+  });
+
   it("returns a zero envelope rather than NaN when nothing is eligible", () => {
     const e = fitEnvelope([frameOf(10, () => ({}), { flag: "pit" })]);
     expect(e.muY).toBe(0);

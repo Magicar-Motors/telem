@@ -116,8 +116,8 @@ export function fitEnvelope(frames: LapFrame[], opts: EnvelopeOptions = {}): Env
   }
 
   const p = opts.percentile ?? DEFAULT_PERCENTILE;
-  const muY = mode === "max" ? Math.max(...lat) : pct(lat, p);
-  const muX = mode === "max" ? Math.max(...brake) : pct(brake, p);
+  const muY = mode === "max" ? maxOf(lat) : pct(lat, p);
+  const muX = mode === "max" ? maxOf(brake) : pct(brake, p);
   return { muY, muX, mode, sampleCount: lat.length, lapCount };
 }
 
@@ -213,6 +213,14 @@ export function analyzeTraction(
     distribution: bins,
     segments,
   };
+}
+
+/** Math.max(...xs) blows the call stack past a few tens of thousands of
+ *  arguments, and a session runs to ~17k samples per six laps. */
+function maxOf(xs: number[]): number {
+  let m = -Infinity;
+  for (const x of xs) if (x > m) m = x;
+  return m === -Infinity ? 0 : m;
 }
 
 function makeBins(): { label: string; from: number; to: number }[] {
