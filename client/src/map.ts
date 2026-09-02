@@ -9,9 +9,7 @@ const TRAIL_MAX = 3000;
 const MARKER_COLOR = "#fff";
 const TRACK_OUTLINE_COLOR = "rgba(255, 255, 255, 0.3)";
 
-const TILES_NOLABELS = "https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png";
 const TILES_SAT = "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}";
-const TILE_OPTS: L.TileLayerOptions = { maxZoom: 20, subdomains: "abcd" };
 const TILE_OPTS_SAT: L.TileLayerOptions = { maxZoom: 20 };
 
 export interface MapPanels {
@@ -74,7 +72,7 @@ export function createMaps(
     shiftKeyRotate: false,
     bearing: trackDef.bearing,
   } as any).setView(trackDef.center, trackDef.zoom);
-  L.tileLayer(TILES_NOLABELS, TILE_OPTS).addTo(overviewMap);
+  L.tileLayer(TILES_SAT, TILE_OPTS_SAT).addTo(overviewMap);
 
   // track outline
   L.polyline(trackDef.track as L.LatLngExpression[], {

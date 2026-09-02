@@ -10,9 +10,7 @@ import { formatTime, formatDate, getBestLapTime } from "./format";
 import { SERVER_URL } from "./server-url";
 import { unpack } from "msgpackr/unpack";
 
-const TILES_NOLABELS = "https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png";
 const TILES_SAT = "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}";
-const TILE_OPTS: L.TileLayerOptions = { maxZoom: 20, subdomains: "abcd" };
 const TILE_OPTS_SAT: L.TileLayerOptions = { maxZoom: 20 };
 
 interface Lap { lap: number; time: number; flag: "clean" | "yellow" | "pit" | "out" | "in"; track: string; startSeq: number; endSeq: number; }
@@ -190,22 +188,7 @@ const map = L.map(mapEl, {
   shiftKeyRotate: false,
   bearing: trackDef.bearing,
 } as any).setView(trackDef.center, trackDef.zoom);
-let darkTiles = L.tileLayer(TILES_NOLABELS, TILE_OPTS).addTo(map);
-let satTiles = L.tileLayer(TILES_SAT, TILE_OPTS_SAT);
-let isSat = false;
-
-const satToggle = document.getElementById("review-sat-toggle")!;
-satToggle.addEventListener("click", () => {
-  isSat = !isSat;
-  satToggle.classList.toggle("active", isSat);
-  if (isSat) {
-    map.removeLayer(darkTiles);
-    satTiles.addTo(map);
-  } else {
-    map.removeLayer(satTiles);
-    darkTiles.addTo(map);
-  }
-});
+L.tileLayer(TILES_SAT, TILE_OPTS_SAT).addTo(map);
 
 new ResizeObserver(() => map.invalidateSize()).observe(mapEl);
 

@@ -93,24 +93,6 @@ body::after {
 .leaflet-container, .leaflet-container *, .leaflet-container:focus, .leaflet-container *:focus { outline: none !important; }
 
 /* ── Sat toggle ── */
-.sat-toggle {
-  position: absolute;
-  top: 8px;
-  right: 8px;
-  z-index: 900;
-  background: transparent;
-  border: 1px solid var(--border-bright);
-  color: var(--text);
-  font-family: var(--font);
-  font-size: 8px;
-  font-weight: 700;
-  letter-spacing: 1px;
-  padding: 3px 8px;
-  cursor: pointer;
-}
-
-.sat-toggle:hover { border-color: var(--accent-dim); color: var(--text-bright); }
-.sat-toggle.active { background: var(--accent); border-color: var(--accent); color: #fff; }
 
 /* ── Track labels ── */
 .turn-label { color: rgba(255,255,255,0.45); font-size: 9px; font-weight: 600; text-align: center; line-height: 14px; text-shadow: 0 0 3px rgba(0,0,0,0.9); }

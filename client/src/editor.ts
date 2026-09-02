@@ -6,9 +6,7 @@ import "leaflet-rotate";
 import { TRACKS, type TrackDef } from "./track";
 import { createDropdown } from "./dropdown";
 
-const TILES = "https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png";
 const TILES_SAT = "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}";
-const TILE_OPTS: L.TileLayerOptions = { maxZoom: 20, subdomains: "abcd" };
 const TILE_OPTS_SAT: L.TileLayerOptions = { maxZoom: 20 };
 
 let currentTrackId = "";
@@ -72,17 +70,7 @@ const map = L.map(mapContainer, {
   bearingInput.value = String(b);
   document.getElementById("bearing-value")!.textContent = `${b}°`;
 });
-const darkTiles = L.tileLayer(TILES, TILE_OPTS).addTo(map);
-const satTiles = L.tileLayer(TILES_SAT, TILE_OPTS_SAT);
-let isSat = false;
-
-document.getElementById("btn-sat")?.addEventListener("click", (e) => {
-  e.stopPropagation();
-  isSat = !isSat;
-  document.getElementById("btn-sat")!.classList.toggle("active", isSat);
-  if (isSat) { map.removeLayer(darkTiles); satTiles.addTo(map); }
-  else { map.removeLayer(satTiles); darkTiles.addTo(map); }
-});
+L.tileLayer(TILES_SAT, TILE_OPTS_SAT).addTo(map);
 
 // Layers
 const trackLine = L.polyline([], { color: "#ff6b35", weight: 2, opacity: 0.8 }).addTo(map);
