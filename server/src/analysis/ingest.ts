@@ -4,7 +4,8 @@
  *  right-positive lateral, with a centerline distance axis. See
  *  docs/analysis-modules.md. */
 
-const G = 9.80665;
+export const G_MS2 = 9.80665;
+const G = G_MS2;
 
 const DEFAULT_DT = 0.05;
 const DEFAULT_MAX_GAP_MS = 250;
@@ -21,7 +22,7 @@ const CONTINUOUS = [
   "gps_lat", "gps_lon", "gps_speed", "gps_altitude",
   "g_force_x", "g_force_y", "throttle_pos", "rpm",
 ] as const;
-const STEPPED = ["brake", "gps_satellites"] as const;
+const STEPPED = ["brake", "gps_satellites", "gear"] as const;
 
 export type LapFlag = "clean" | "yellow" | "pit" | "out" | "in";
 
@@ -33,6 +34,7 @@ export interface Tick {
 
 export interface LapSample {
   t: number;         // s since lap start
+  tsMs: number;      // absolute epoch ms
   s: number;         // m along the centerline, from the finish line
   lat: number;
   lon: number;
@@ -42,6 +44,7 @@ export interface LapSample {
   alt: number;       // m
   throttle: number;  // %
   rpm: number;
+  gear: number;
   brake: number;     // 0/1
   gapMs: number;     // staleness of the oldest channel behind this sample
 }
@@ -235,6 +238,7 @@ export function buildLapFrame(
 
     samples.push({
       t: (tMs - t0) / 1000,
+      tsMs: tMs,
       s: (norm + wraps) * centerline.totalM,
       lat,
       lon,
@@ -244,6 +248,7 @@ export function buildLapFrame(
       alt: sampleLinear(series.gps_altitude, tMs),
       throttle: sampleLinear(series.throttle_pos, tMs),
       rpm: sampleLinear(series.rpm, tMs),
+      gear: sampleHold(series.gear, tMs),
       brake: sampleHold(series.brake, tMs),
       gapMs: gap,
     });

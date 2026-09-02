@@ -13,10 +13,13 @@ import {
   createGCircleCanvas,
   drawGCircle,
   emaStep,
-  toDisplayAxes,
   G_TRAIL_LEN,
   type GPoint,
 } from "./gcircle-renderer";
+import {
+  buildLapFrame, buildCenterline, G_MS2,
+  type Centerline, type LapFrame,
+} from "../../server/src/analysis/ingest";
 
 const TILES_SAT = "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}";
 const TILE_OPTS_SAT: L.TileLayerOptions = { maxZoom: 20 };
@@ -40,12 +43,21 @@ let lapTicks: WalTick[] = [];
 let lapCoords: [number, number][] = [];
 let lapSpeeds: number[] = [];
 let lapThrottles: number[] = [];
-let lapGx: number[] = [];
-let lapGy: number[] = [];
 let lapRpms: number[] = [];
 let lapGears: number[] = [];
 let lapBrakes: number[] = [];
 let lapTimestamps: number[] = [];
+let lapFrame: LapFrame | null = null;
+
+let centerlineCache: Centerline | null = null;
+let centerlineFor: typeof trackDef | null = null;
+function activeCenterline(): Centerline {
+  if (!centerlineCache || centerlineFor !== trackDef) {
+    centerlineCache = buildCenterline(trackDef.track, trackDef.finishLine);
+    centerlineFor = trackDef;
+  }
+  return centerlineCache;
+}
 let trailMode: "speed" | "throttle" | "rpm" | "gear" | "brake" = "speed";
 let allLapsLines: L.Polyline[] = [];
 let aggVisible: Set<number> = new Set();
@@ -278,22 +290,30 @@ function resetGTrail() {
   gLastIdx = -1;
 }
 
-function updateGCircle(gx: number, gy: number, seekIdx = -1) {
+/** The g circle's display axes are exactly the frame's normalised ones:
+ *  x is right-positive lateral, y is forward-positive, and the canvas y axis
+ *  points down so braking reads up. */
+function gPointAt(i: number): GPoint {
+  const s = lapFrame?.samples[i];
+  return s ? { x: s.aLat / G_MS2, y: s.aLong / G_MS2 } : { x: 0, y: 0 };
+}
+
+function updateGCircle(seekIdx = -1) {
   if (gCanvas.w === 0 || gCanvas.h === 0) return;
 
   // Scrubbing backwards or jumping past the trail window means the EWMA has to
   // be replayed from scratch; a short forward step can just extend it.
-  if (seekIdx >= 0 && lapGx.length > 0) {
+  if (seekIdx >= 0 && lapFrame && lapFrame.samples.length > 0) {
     if (seekIdx < gLastIdx || seekIdx - gLastIdx > G_TRAIL_LEN) {
       gTrail = [];
       gEma = null;
       for (let i = Math.max(0, seekIdx - G_TRAIL_LEN + 1); i <= seekIdx; i++) {
-        gEma = emaStep(gEma, toDisplayAxes(lapGx[i] ?? 0, lapGy[i] ?? 0));
+        gEma = emaStep(gEma, gPointAt(i));
         gTrail.push(gEma);
       }
     } else {
       for (let i = gLastIdx + 1; i <= seekIdx; i++) {
-        gEma = emaStep(gEma, toDisplayAxes(lapGx[i] ?? 0, lapGy[i] ?? 0));
+        gEma = emaStep(gEma, gPointAt(i));
         gTrail.push(gEma);
       }
       if (gTrail.length > G_TRAIL_LEN) gTrail.splice(0, gTrail.length - G_TRAIL_LEN);
@@ -301,7 +321,7 @@ function updateGCircle(gx: number, gy: number, seekIdx = -1) {
     gLastIdx = seekIdx;
   }
 
-  drawGCircle(gCanvas, gEma ?? toDisplayAxes(gx, gy), gTrail);
+  drawGCircle(gCanvas, gEma ?? { x: 0, y: 0 }, gTrail);
 }
 
 // ── Gauges ──
@@ -815,7 +835,7 @@ function clearLapView() {
   trailLines = [];
   if (posMarker) { posMarker.remove(); posMarker = null; }
   lapListEl.innerHTML = "";
-  lapCoords = []; lapSpeeds = []; lapThrottles = []; lapGx = []; lapGy = [];
+  lapCoords = []; lapSpeeds = []; lapThrottles = [];
   lapRpms = []; lapGears = []; lapBrakes = [];
   lapTimestamps = []; lapTicks = [];
   seekEl.value = "0"; seekTimeEl.textContent = "0:00.000"; seekEpochEl.textContent = "--";
@@ -827,7 +847,7 @@ function clearLapView() {
   updateGaugeSegs(tpsSegTrack, 0, () => "");
   updateGaugeSegs(rpmSegTrack, 0, () => "");
   resetGTrail();
-  updateGCircle(0, 0);
+  updateGCircle();
 }
 
 // ── Laps ──
@@ -904,7 +924,7 @@ async function selectLap(idx: number, forceRefresh = false) {
     const cached = await cacheGet(cacheKey);
     if (!cached || forceRefresh) {
       lapTicks = []; lapCoords = []; lapSpeeds = []; lapThrottles = [];
-      lapGx = []; lapGy = []; lapRpms = []; lapGears = []; lapBrakes = [];
+      lapRpms = []; lapGears = []; lapBrakes = [];
       lapTimestamps = [];
       drawTrail();
       seekEl.max = "0"; seekEl.value = "0";
@@ -917,7 +937,7 @@ async function selectLap(idx: number, forceRefresh = false) {
   } else {
     // Reusing inflight fetch — clear display and show loading
     lapTicks = []; lapCoords = []; lapSpeeds = []; lapThrottles = [];
-    lapGx = []; lapGy = []; lapRpms = []; lapGears = []; lapBrakes = [];
+    lapRpms = []; lapGears = []; lapBrakes = [];
     lapTimestamps = [];
     drawTrail();
     seekEl.max = "0"; seekEl.value = "0";
@@ -928,28 +948,15 @@ async function selectLap(idx: number, forceRefresh = false) {
   if (gen !== selectLapGen) return; // user switched laps during fetch
   lapTicks = data.ticks;
 
-  // Ticks are already grouped by timestamp — just carry forward and extract arrays
-  const latest: Record<string, number> = {};
-  lapCoords = []; lapSpeeds = []; lapThrottles = []; lapGx = []; lapGy = [];
-  lapRpms = []; lapGears = []; lapBrakes = [];
-  lapTimestamps = [];
-
-  for (const tick of lapTicks) {
-    // Merge tick channels into carry-forward state
-    for (const [ch, val] of Object.entries(tick.d)) latest[ch] = val as number;
-
-    if (latest.gps_lat !== undefined && latest.gps_lon !== undefined && (latest.gps_satellites ?? 0) >= 5) {
-      lapCoords.push([latest.gps_lat, latest.gps_lon]);
-      lapSpeeds.push(latest.gps_speed ?? 0);
-      lapThrottles.push(latest.throttle_pos ?? 0);
-      lapGx.push(latest.g_force_x ?? 0);
-      lapGy.push(latest.g_force_y ?? 0);
-      lapRpms.push(latest.rpm ?? 0);
-      lapGears.push(latest.gear ?? 0);
-      lapBrakes.push(latest.brake ?? 0);
-      lapTimestamps.push(tick.ts);
-    }
-  }
+  lapFrame = buildLapFrame(lapTicks, idx, lap.flag, activeCenterline());
+  const S = lapFrame.samples;
+  lapCoords = S.map((x) => [x.lat, x.lon] as [number, number]);
+  lapSpeeds = S.map((x) => x.v * 3.6);
+  lapThrottles = S.map((x) => x.throttle);
+  lapRpms = S.map((x) => x.rpm);
+  lapGears = S.map((x) => x.gear);
+  lapBrakes = S.map((x) => x.brake);
+  lapTimestamps = S.map((x) => x.tsMs);
 
   drawTrail();
   seekEl.max = String(Math.max(0, lapCoords.length - 1));
@@ -982,7 +989,7 @@ async function showAllLaps() {
 
   // Clear single-lap display
   lapTicks = []; lapCoords = []; lapSpeeds = []; lapThrottles = [];
-  lapGx = []; lapGy = []; lapRpms = []; lapGears = []; lapBrakes = []; lapTimestamps = [];
+  lapRpms = []; lapGears = []; lapBrakes = []; lapTimestamps = [];
   drawTrail();
   clearSeekDisplay();
 
@@ -1167,7 +1174,7 @@ function clearSeekDisplay() {
   seekTimeEl.textContent = "--";
   seekEpochEl.textContent = "";
   resetGTrail();
-  updateGCircle(0, 0);
+  updateGCircle();
   speedValueEl.textContent = "--";
   updateGaugeSegs(speedSegTrack, 0, () => "");
   throttleValueEl.textContent = "--";
@@ -1203,7 +1210,7 @@ function updateSeek(idx: number) {
   }
 
   // G-force dial
-  updateGCircle(lapGx[idx] ?? 0, lapGy[idx] ?? 0, idx);
+  updateGCircle(idx);
 
   // Speed gauge
   const spdKmh = lapSpeeds[idx] ?? 0;

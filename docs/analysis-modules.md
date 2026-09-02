@@ -239,33 +239,51 @@ firmware changed axes — mark `usable: false` and surface it.
 
 ### Envelope fit
 
-Session-scoped. A single lap has too few limit-adjacent samples.
+**The envelope is the car's theoretical maximum, not a session-conditioned
+fit.** Take the best the car has ever shown and measure everything against
+it. Concretely: `mode: "max"` over every lap in scope.
 
 ```
-mu_y = percentile(abs(aLat), 99.5)
-mu_x = percentile(max(-aLong, 0), 99.5)     braking only
+mu_y = max( abs(aLat) )
+mu_x = max( max(-aLong, 0) )
 ```
 
-Sample eligibility, all required:
+**No cold-tire exclusion.** With a max there is nothing to exclude — a cold
+lap cannot lower a maximum, so the out-lap and the first flying lap stay in.
+That also means the envelope is stable across sessions instead of moving
+every time the driver has a scrappy day.
 
-- lap `flag === "clean"`
-- **not the first clean lap of the session** — cold tires read ~0.99 g against
-  ~1.13 g warm; including it drags `mu_y` down and inflates every subsequent
-  utilization number. The `flag` field already marks lap 1 as `"out"`, but the
-  first *flying* lap is the first `"clean"` one, so this is a separate exclusion
-  and easy to miss.
+Sample eligibility is only about data validity, not driving:
+
 - `gapMs` under threshold
 - `minSatellites >= 5`
+- lap `flag !== "pit"`
 
-Percentile, never max. Curb strikes spike past 1.5 g and blow out the ceiling.
+Scope defaults to the session but takes any set of frames, so an all-time
+envelope across every archived session is the same call.
 
-Measured on six clean laps, `percentile(abs(aLat), 99.5)` lands at
-**1.01-1.16 g**, straddling the ~1.13 g warm figure the source spec cites.
-The fit is sound on real data.
+**The tradeoff, stated once.** A maximum is exactly what a percentile
+protects against. Curb strikes spike past 1.5 g, and one kerb hop sets the
+ceiling for everything measured against it, reading real corners as slack.
+Three modes exist so this is checkable on real data rather than argued:
 
-The `aLat` bias is small — median straight-line lateral is **-0.013 to
-+0.005 g** across those laps, so the box is mounted close to square. Still
-worth removing and recording, since the point is to notice when it changes.
+| Mode | `mu` from | Use |
+|---|---|---|
+| `"max"` | absolute maximum observed | **default** — theoretical max |
+| `"percentile"` | p99.5 | when a kerb strike has poisoned the max |
+| `"fixed"` | supplied constants | tyre-data ceiling, independent of any lap |
+
+Report which mode produced the number next to the number.
+
+Measured on six archive laps, the two disagree in a way worth knowing about:
+`percentile(abs(aLat), 99.5)` lands at 1.01–1.16 g. The braking figure moves
+far more across a session than the lateral one — 0.663 g on the first flying
+lap against 1.092 g by the sixth — so a per-session braking envelope was
+never going to be stable, which is a further argument for an all-time max.
+
+The `aLat` bias is small: median straight-line lateral is 0.0023 g over the
+session, so the box is mounted close to square. Still worth removing and
+recording, since the point is to notice when it changes.
 
 ### Per-sample utilization
 
