@@ -21,6 +21,11 @@ export interface Envelope {
   mode: EnvelopeMode;
   sampleCount: number;  // samples that fed the fit
   lapCount: number;
+  /** Convex hull of the sample cloud in display g-space: x is right-positive
+   *  lateral, y is forward-positive longitudinal. Counter-clockwise. This is
+   *  the real shape of what the car did — squashed at the bottom, because the
+   *  car is power-limited on exit rather than traction-limited. */
+  hull?: [number, number][];
 }
 
 export interface EnvelopeOptions {
@@ -59,20 +64,80 @@ export interface TractionResult {
   segments: Segment[];
 }
 
+function cross(ox: number, oy: number, ax: number, ay: number, bx: number, by: number): number {
+  return (ax - ox) * (by - oy) - (ay - oy) * (bx - ox);
+}
+
+/** Andrew's monotone chain. Counter-clockwise, collinear points dropped. */
+export function convexHull(pts: readonly [number, number][]): [number, number][] {
+  if (pts.length < 3) return pts.map((p) => [p[0], p[1]]);
+  const sorted = [...pts].sort((a, b) => (a[0] - b[0]) || (a[1] - b[1]));
+
+  const build = (src: readonly [number, number][]): [number, number][] => {
+    const out: [number, number][] = [];
+    for (const p of src) {
+      while (out.length >= 2 &&
+             cross(out[out.length - 2][0], out[out.length - 2][1],
+                   out[out.length - 1][0], out[out.length - 1][1], p[0], p[1]) <= 0) {
+        out.pop();
+      }
+      out.push([p[0], p[1]]);
+    }
+    out.pop();
+    return out;
+  };
+
+  const lower = build(sorted);
+  const upper = build([...sorted].reverse());
+  return lower.concat(upper);
+}
+
+/** True when (x, y) lies on or inside a counter-clockwise hull. */
+export function insideHull(hull: readonly [number, number][], x: number, y: number): boolean {
+  if (hull.length < 3) return false;
+  for (let i = 0; i < hull.length; i++) {
+    const a = hull[i];
+    const b = hull[(i + 1) % hull.length];
+    if (cross(a[0], a[1], b[0], b[1], x, y) < 0) return false;
+  }
+  return true;
+}
+
 /** The best this car has shown: the maximum over the six clean laps in
  *  archive/2026-08-22_23-sonoma-bypass.telem. Live sessions start here rather
  *  than from nothing, since a running max seeded at zero reads 100% for the
  *  first corner of every session. It still grows if the car does better. */
 export const REFERENCE_ENVELOPE: Envelope = {
   muY: 1.387, muX: 1.146, mode: "max", sampleCount: 16866, lapCount: 6,
+  // Note the flat bottom: braking reaches -1.15 g but acceleration only
+  // +0.28 g. That asymmetry is the car being power-limited on exit, and it is
+  // why utilisation measures the braking half only.
+  hull: [
+    [-1.387, 0.134], [-1.300, -0.062], [-0.714, -0.646], [-0.188, -1.058],
+    [-0.065, -1.117], [0.001, -1.144], [0.010, -1.146], [1.142, -0.165],
+    [1.167, -0.136], [1.219, 0.038], [1.206, 0.053], [1.127, 0.079],
+    [-0.200, 0.280], [-0.526, 0.282], [-0.743, 0.267], [-0.812, 0.261],
+    [-0.912, 0.242],
+  ],
 };
 
-/** Widen an envelope to admit a sample that exceeded it. */
-export function growEnvelope(env: Envelope, aLatG: number, brakeG: number): Envelope {
-  const muY = Math.max(env.muY, Math.abs(aLatG));
-  const muX = Math.max(env.muX, brakeG);
-  if (muY === env.muY && muX === env.muX) return env;
-  return { ...env, muY, muX, sampleCount: env.sampleCount + 1 };
+/** Widen an envelope to admit a sample that exceeded it. `longG` is signed and
+ *  forward-positive; only its braking half feeds muX, but the hull keeps both.
+ *
+ *  The hull is only recomputed when the point falls outside it, which is rare
+ *  after the first corners. hull(hull ∪ p) equals hull(all points), so nothing
+ *  is lost by discarding interior samples. */
+export function growEnvelope(env: Envelope, latG: number, longG: number): Envelope {
+  const muY = Math.max(env.muY, Math.abs(latG));
+  const muX = Math.max(env.muX, Math.max(-longG, 0));
+  const hull = env.hull ?? [];
+  const outside = !insideHull(hull, latG, longG);
+  if (muY === env.muY && muX === env.muX && !outside) return env;
+  return {
+    ...env, muY, muX,
+    hull: outside ? convexHull([...hull, [latG, longG]]) : hull,
+    sampleCount: env.sampleCount + 1,
+  };
 }
 
 /** A lap is eligible for the fit on data validity alone. There is deliberately
@@ -99,6 +164,7 @@ export function fitEnvelope(frames: LapFrame[], opts: EnvelopeOptions = {}): Env
 
   const lat: number[] = [];
   const brake: number[] = [];
+  const cloud: [number, number][] = [];
   let lapCount = 0;
 
   for (const f of frames) {
@@ -106,8 +172,11 @@ export function fitEnvelope(frames: LapFrame[], opts: EnvelopeOptions = {}): Env
     lapCount++;
     for (const s of f.samples) {
       if (s.gapMs > maxGapMs) continue;
-      lat.push(Math.abs(s.aLat) / G_MS2);
-      brake.push(Math.max(-s.aLong, 0) / G_MS2);
+      const latG = s.aLat / G_MS2;
+      const longG = s.aLong / G_MS2;
+      lat.push(Math.abs(latG));
+      brake.push(Math.max(-longG, 0));
+      cloud.push([latG, longG]);
     }
   }
 
@@ -118,7 +187,7 @@ export function fitEnvelope(frames: LapFrame[], opts: EnvelopeOptions = {}): Env
   const p = opts.percentile ?? DEFAULT_PERCENTILE;
   const muY = mode === "max" ? maxOf(lat) : pct(lat, p);
   const muX = mode === "max" ? maxOf(brake) : pct(brake, p);
-  return { muY, muX, mode, sampleCount: lat.length, lapCount };
+  return { muY, muX, mode, sampleCount: lat.length, lapCount, hull: convexHull(cloud) };
 }
 
 /** Elliptical against the two fitted limits.

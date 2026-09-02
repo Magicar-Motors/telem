@@ -17,7 +17,7 @@ const GRID_TEXT = "rgba(255, 255, 255, 0.2)";
 const AXIS_LABEL = "rgba(255, 107, 53, 0.5)";
 const DOT_COLOR = "#ff6b35";
 const TEXT_BRIGHT = "#eee";
-const LIMIT_LINE = "rgba(255, 255, 255, 0.30)";
+const LIMIT_LINE = "rgba(255, 255, 255, 0.17)";
 
 export interface GPoint {
   x: number;
@@ -29,6 +29,10 @@ export interface GPoint {
 export interface GEnvelope {
   muY: number;
   muX: number;
+  /** Convex hull of the sample cloud, in the same axes as `GPoint`. Preferred
+   *  over the ellipse: it is the shape the car actually made, flat across the
+   *  bottom where acceleration runs out. */
+  hull?: [number, number][];
 }
 
 export interface GCircleCanvas {
@@ -134,19 +138,24 @@ export function drawGCircle(
     ctx.fillText(`${g}g`, cx + 3, cy - g * scale - 2);
   }
 
-  if (envelope && envelope.muY > 0 && envelope.muX > 0) {
-    const rx = envelope.muY * scale;
-    const ry = envelope.muX * scale;
+  if (envelope) {
     ctx.strokeStyle = LIMIT_LINE;
     ctx.lineWidth = 1.5;
-    // Braking half solid: that is the half utilisation is measured against.
+    ctx.setLineDash([2, 3]);
     ctx.beginPath();
-    ctx.ellipse(cx, cy, rx, ry, 0, Math.PI, 2 * Math.PI);
-    ctx.stroke();
-    // Acceleration half dashed, to show it is drawn for shape, not measured.
-    ctx.setLineDash([3, 4]);
-    ctx.beginPath();
-    ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI);
+    if (envelope.hull && envelope.hull.length >= 3) {
+      for (let i = 0; i < envelope.hull.length; i++) {
+        const [hx, hy] = envelope.hull[i];
+        const px = cx + hx * scale;
+        const py = cy + hy * scale;
+        if (i === 0) ctx.moveTo(px, py);
+        else ctx.lineTo(px, py);
+      }
+      ctx.closePath();
+    } else if (envelope.muY > 0 && envelope.muX > 0) {
+      // No cloud to hull — a fixed envelope, or a session with nothing in it.
+      ctx.ellipse(cx, cy, envelope.muY * scale, envelope.muX * scale, 0, 0, 2 * Math.PI);
+    }
     ctx.stroke();
     ctx.setLineDash([]);
     ctx.lineWidth = 1;

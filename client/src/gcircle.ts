@@ -57,9 +57,9 @@ export function createGCircle(
       // Raw sample, not the EWMA: smoothing would clip the peaks the envelope
       // is made of.
       const latG = -gy;
-      const brakeG = Math.max(gx, 0);
-      envelope = growEnvelope(envelope, latG, brakeG);
-      uSum += utilization(Math.abs(latG), brakeG, envelope);
+      const longG = -gx;   // signed, forward positive — the hull needs both halves
+      envelope = growEnvelope(envelope, latG, longG);
+      uSum += utilization(Math.abs(latG), Math.max(-longG, 0), envelope);
       uCount++;
     }
 

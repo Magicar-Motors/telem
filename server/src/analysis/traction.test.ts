@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
-  fitEnvelope, analyzeTraction, utilization, growEnvelope,
+  fitEnvelope, analyzeTraction, utilization, growEnvelope, convexHull, insideHull,
   REFERENCE_ENVELOPE, type Envelope,
 } from "./traction.js";
 import { G_MS2, type LapFrame, type LapSample, type LapFlag } from "./ingest.js";
@@ -230,24 +230,35 @@ describe("max mode, same scope", () => {
 });
 
 describe("growEnvelope", () => {
-  const base: Envelope = { muY: 1.0, muX: 0.8, mode: "max", sampleCount: 10, lapCount: 1 };
+  // longG is signed and forward-positive, so braking is negative.
+  const seeded = fitEnvelope([frameOf(200, (i) => ({
+    aLat: flat(Math.sin(i / 20)), aLong: flat(-0.8 * Math.abs(Math.cos(i / 20))),
+  }))]);
 
-  it("returns the same object when nothing is exceeded", () => {
-    expect(growEnvelope(base, 0.9, 0.7)).toBe(base);
+  it("returns the same object for a sample already inside", () => {
+    // Mid-braking, no lateral: well within a cloud spanning y in [-0.8, 0].
+    expect(insideHull(seeded.hull!, 0, -0.4)).toBe(true);
+    expect(growEnvelope(seeded, 0, -0.4)).toBe(seeded);
   });
 
   it("widens lateral and braking independently", () => {
-    expect(growEnvelope(base, 1.3, 0.5).muY).toBeCloseTo(1.3, 6);
-    expect(growEnvelope(base, 1.3, 0.5).muX).toBeCloseTo(0.8, 6);
-    expect(growEnvelope(base, 0.5, 1.1).muX).toBeCloseTo(1.1, 6);
+    expect(growEnvelope(seeded, 1.3, 0).muY).toBeCloseTo(1.3, 6);
+    expect(growEnvelope(seeded, 1.3, 0).muX).toBeCloseTo(seeded.muX, 6);
+    expect(growEnvelope(seeded, 0, -1.1).muX).toBeCloseTo(1.1, 6);
+  });
+
+  it("does not let acceleration widen the braking limit", () => {
+    // Forward-positive longG is acceleration, which is power-limited, not
+    // traction-limited, and must never set muX.
+    expect(growEnvelope(seeded, 0, 2.0).muX).toBeCloseTo(seeded.muX, 6);
   });
 
   it("treats a left turn the same as a right one", () => {
-    expect(growEnvelope(base, -1.4, 0).muY).toBeCloseTo(1.4, 6);
+    expect(growEnvelope(seeded, -1.4, 0).muY).toBeCloseTo(1.4, 6);
   });
 
   it("keeps utilisation at or below 1 for the sample that grew it", () => {
-    const grown = growEnvelope(base, 1.5, 0.9);
+    const grown = growEnvelope(growEnvelope(seeded, 1.5, 0), 0, -0.9);
     expect(utilization(1.5, 0, grown)).toBeCloseTo(1, 6);
     expect(utilization(0, 0.9, grown)).toBeCloseTo(1, 6);
   });
@@ -266,5 +277,86 @@ describe("REFERENCE_ENVELOPE", () => {
     const grown = growEnvelope(cold, 0.7, 0);
     expect(utilization(0.7, 0, grown)).toBeCloseTo(1, 6);
     expect(utilization(0.7, 0, REFERENCE_ENVELOPE)).toBeLessThan(0.55);
+  });
+});
+
+describe("convexHull", () => {
+  it("keeps only the corners of a filled square", () => {
+    const pts: [number, number][] = [];
+    for (let x = 0; x <= 4; x++) for (let y = 0; y <= 4; y++) pts.push([x, y]);
+    const h = convexHull(pts);
+    expect(h).toHaveLength(4);
+    for (const c of [[0,0],[4,0],[4,4],[0,4]]) {
+      expect(h.some((p) => p[0] === c[0] && p[1] === c[1])).toBe(true);
+    }
+  });
+
+  it("winds counter-clockwise", () => {
+    const h = convexHull([[0,0],[2,0],[2,2],[0,2]]);
+    let area = 0;
+    for (let i = 0; i < h.length; i++) {
+      const a = h[i], b = h[(i+1) % h.length];
+      area += a[0]*b[1] - b[0]*a[1];
+    }
+    expect(area).toBeGreaterThan(0);   // positive shoelace == CCW
+  });
+
+  it("drops collinear points", () => {
+    expect(convexHull([[0,0],[1,0],[2,0],[2,2],[0,2]])).toHaveLength(4);
+  });
+
+  it("passes small inputs through", () => {
+    expect(convexHull([[1,1]])).toEqual([[1,1]]);
+    expect(convexHull([[0,0],[1,1]])).toHaveLength(2);
+  });
+});
+
+describe("insideHull", () => {
+  const square = convexHull([[-1,-1],[1,-1],[1,1],[-1,1]]);
+
+  it("accepts interior and boundary points, rejects exterior", () => {
+    expect(insideHull(square, 0, 0)).toBe(true);
+    expect(insideHull(square, 1, 1)).toBe(true);
+    expect(insideHull(square, 1.01, 0)).toBe(false);
+    expect(insideHull(square, 0, -1.01)).toBe(false);
+  });
+
+  it("is false for a degenerate hull", () => {
+    expect(insideHull([[0,0],[1,1]], 0.5, 0.5)).toBe(false);
+  });
+});
+
+describe("hull on the envelope", () => {
+  it("wraps every sample that fed the fit", () => {
+    const f = frameOf(400, (i) => ({
+      aLat: flat(Math.sin(i / 30)), aLong: flat(Math.cos(i / 30) * 0.8),
+    }));
+    const e = fitEnvelope([f]);
+    expect(e.hull!.length).toBeGreaterThan(3);
+    for (const s of f.samples) {
+      expect(insideHull(e.hull!, s.aLat / G_MS2, s.aLong / G_MS2)).toBe(true);
+    }
+  });
+
+  it("grows only when a sample lands outside", () => {
+    const start = fitEnvelope([frameOf(200, (i) => ({
+      aLat: flat(Math.sin(i / 20)), aLong: flat(Math.cos(i / 20) * 0.5),
+    }))]);
+    expect(growEnvelope(start, 0, 0)).toBe(start);          // interior, untouched
+    const wider = growEnvelope(start, 0, -3.0);             // way past braking
+    expect(wider).not.toBe(start);
+    expect(insideHull(wider.hull!, 0, -3.0)).toBe(true);
+    expect(wider.muX).toBeCloseTo(3.0, 6);
+  });
+
+  it("keeps the acceleration side, which is where the car is power-limited", () => {
+    const f = frameOf(400, (i) => ({
+      aLat: flat(Math.sin(i / 30)),
+      aLong: flat(i % 2 ? -1.0 : 0.22),   // brakes hard, accelerates weakly
+    }));
+    const hull = fitEnvelope([f]).hull!;
+    const ys = hull.map((p) => p[1]);
+    expect(Math.max(...ys)).toBeCloseTo(0.22, 2);   // flat bottom
+    expect(Math.min(...ys)).toBeCloseTo(-1.0, 2);
   });
 });
