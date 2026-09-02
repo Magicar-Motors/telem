@@ -371,9 +371,18 @@ altitude spikes the clamp exists for.
 Compute both. Different sensors; their disagreement is the quality signal.
 
 ```
-a_gps = d(v) / dt                        // grade-free by construction
+a_gps = d(smooth(v, 0.3 s)) / dt         // grade-free by construction
 a_imu = aLong - g * sin_th               // gravity component removed
 ```
+
+**Smooth `v` before differentiating.** `gps_speed` is logged to 0.1 km/h,
+which over a 0.1 s central difference is a 0.278 m/s^2 quantisation step —
+comparable to the divergence being measured. Sweeping the window on archive
+laps gives a clean minimum at ~0.3 s (0.746 -> 0.480 m/s^2, a 36% drop);
+wider than that and real signal starts going with it. At the optimum the two
+channels' spreads match, 1.828 against 1.869 m/s^2, which is what agreement
+should look like. Without this the divergence metric mostly reports GPS
+quantisation as an unreliable altitude channel.
 
 Both in m/s², both forward-positive per module 0.
 
@@ -499,8 +508,10 @@ silent — a wrong sign or a stale unit produces plausible numbers, not a crash.
 2. **Collapse the other two forward-fill copies** (`drawAggregateTrails`,
    `compare.ts`) onto the ingest layer. Three copies is why this layer was
    assumed to exist.
-3. **Module 2 grade** — cheap, no config, and it gates module 3. Validate by
-   checking that per-lap elevation gain sums to ~0 around a closed circuit.
+3. **Module 2 grade** — done. Measured on six archive laps: grade p1 -0.128
+   to p99 +0.164 peaking at 0.182, 0.00% clamped at +/- 0.20, altitude closes
+   to within -4.5 m to +2.6 m around the circuit, and the gravity correction
+   cuts a_gps-vs-a_imu disagreement by 35-39%.
 4. **Module 1 traction** — needs only module 0. Validate `mu_y` against the
    ~1.13 g warm figure.
 5. **Corner scales**, then **coastdown**, then **module 3**. Power before
