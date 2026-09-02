@@ -1006,25 +1006,13 @@ async function showAllLaps() {
     const data = await cacheGet<{ ticks: any[] }>(cacheKey);
     if (!data) continue;
 
-    const coords: [number, number][] = [];
-    const speeds: number[] = [];
-    const throttles: number[] = [];
-    const rpms: number[] = [];
-    const brakes: number[] = [];
-    const gears: number[] = [];
-    const latest: Record<string, number> = {};
-
-    for (const tick of data.ticks) {
-      for (const [ch, val] of Object.entries(tick.d)) latest[ch] = val as number;
-      if (latest.gps_lat !== undefined && latest.gps_lon !== undefined && (latest.gps_satellites ?? 0) >= 5) {
-        coords.push([latest.gps_lat, latest.gps_lon]);
-        speeds.push(latest.gps_speed ?? 0);
-        throttles.push(latest.throttle_pos ?? 0);
-        rpms.push(latest.rpm ?? 0);
-        brakes.push(latest.brake ?? 0);
-        gears.push(latest.gear ?? 0);
-      }
-    }
+    const S = buildLapFrame(data.ticks, i, lap.flag, activeCenterline()).samples;
+    const coords = S.map((x) => [x.lat, x.lon] as [number, number]);
+    const speeds = S.map((x) => x.v * 3.6);
+    const throttles = S.map((x) => x.throttle);
+    const rpms = S.map((x) => x.rpm);
+    const brakes = S.map((x) => x.brake);
+    const gears = S.map((x) => x.gear);
 
     const frac = lap.flag === "clean" ? 1 - (lap.time - bestTime) / timeRange : 0;
     const opacity = 0.15 + frac * 0.55;

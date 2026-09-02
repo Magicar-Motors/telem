@@ -4,10 +4,10 @@ import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import "leaflet-rotate";
 import { TRACKS, type TrackDef } from "./track";
-import { trackProgress } from "./track-utils";
 import { formatTime, formatDate } from "./format";
 import { SERVER_URL } from "./server-url";
 import { unpack } from "msgpackr/unpack";
+import { buildLapFrame, buildCenterline } from "../../server/src/analysis/ingest";
 
 const TILES_SAT = "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}";
 const TILE_OPTS_SAT: L.TileLayerOptions = { maxZoom: 20 };
@@ -22,6 +22,7 @@ interface LapRef { session: Session; lapIdx: number; }
 const params = new URLSearchParams(window.location.search);
 const trackId = params.get("track") ?? "sonoma";
 const trackDef: TrackDef = TRACKS[trackId] ?? TRACKS.sonoma;
+const centerline = buildCenterline(trackDef.track, trackDef.finishLine);
 
 // ── State ──
 let sessions: Session[] = [];
@@ -228,25 +229,9 @@ async function fetchLapData(lap: Lap): Promise<{ coords: [number, number][]; pro
     ticks = unpack(new Uint8Array(buf)) as typeof ticks;
   }
 
-  const coords: [number, number][] = [];
-  const progress: { norm: number; elapsed: number }[] = [];
-  const latest: Record<string, number> = {};
-  const startTs = ticks[0]?.ts ?? 0;
-  const finishProgress = trackProgress(trackDef.track, trackDef.finishLine[0], trackDef.finishLine[1]);
-
-  let prevNorm = -1;
-  for (const tick of ticks) {
-    for (const [ch, val] of Object.entries(tick.d)) latest[ch] = val;
-    if (latest.gps_lat !== undefined && latest.gps_lon !== undefined && (latest.gps_satellites ?? 0) >= 5) {
-      coords.push([latest.gps_lat, latest.gps_lon]);
-      const p = trackProgress(trackDef.track, latest.gps_lat, latest.gps_lon);
-      let norm = ((p - finishProgress) % 1 + 1) % 1;
-      // Unwrap: ensure monotonically increasing (handle 0.99 → 0.01 wrap)
-      if (prevNorm >= 0 && norm < prevNorm - 0.5) norm += 1;
-      prevNorm = norm;
-      progress.push({ norm, elapsed: tick.ts - startTs });
-    }
-  }
+  const S = buildLapFrame(ticks, 0, "clean", centerline).samples;
+  const coords = S.map((x) => [x.lat, x.lon] as [number, number]);
+  const progress = S.map((x) => ({ norm: x.s / centerline.totalM, elapsed: x.t * 1000 }));
 
   return { coords, progress };
 }
