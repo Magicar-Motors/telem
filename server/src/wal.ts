@@ -470,7 +470,7 @@ export class WalEngine extends EventEmitter {
 
     const maxPerFile = this.config.snapshotThreshold;
     const WRITE_BUF_SIZE = 8192;
-    let newSeq = 0, lastTs = -1;
+    let newSeq = 0;
     let gen = 1, lineCount = 0;
     let oldEntryCount = 0, newEntryCount = 0;
     let fileMinSeq = Infinity, fileMaxSeq = -1;

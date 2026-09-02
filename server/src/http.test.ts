@@ -113,7 +113,7 @@ describe("HTTP server", () => {
     wal = new WalEngine({ dataDir, snapshotThreshold: 50_000, fsyncBatchSize: 100 });
     await wal.init();
     udpSender = new UdpSender(wal);
-    server = createServer(wal, new SessionStore(dataDir), undefined, undefined, udpSender);
+    server = createServer(wal, new SessionStore(dataDir), undefined, udpSender);
     await new Promise<void>((resolve) => {
       server.listen(0, "127.0.0.1", () => resolve());
     });

@@ -465,14 +465,6 @@ async function cacheGet<T>(key: string): Promise<T | null> {
   } catch { return null; }
 }
 
-async function cacheDelete(key: string): Promise<void> {
-  try {
-    const db = await dbReady;
-    const tx = db.transaction(DB_STORE, "readwrite");
-    tx.objectStore(DB_STORE).delete(key);
-  } catch {}
-}
-
 async function cacheClearPrefix(prefix: string): Promise<void> {
   try {
     const db = await dbReady;
@@ -1135,7 +1127,6 @@ function drawTrail() {
   };
   const values = valuesMap[trailMode];
   const colorFn = colorFnMap[trailMode];
-  const bucketSize = Math.max(1, Math.ceil(lapCoords.length / 80));
 
   // Split into continuous segments at timestamp gaps
   const segments = splitAtGaps(lapCoords);

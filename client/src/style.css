@@ -1,5 +1,4 @@
 @import "./base.css";
-@import "uplot/dist/uPlot.min.css";
 
 .status-group {
   gap: 16px;
@@ -172,45 +171,6 @@
   background: var(--panel-bg);
 }
 
-#map-overview .maplibregl-canvas-container {
-  background: var(--panel-bg);
-}
-
-.overview-finish {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  white-space: nowrap;
-}
-
-.finish-dot {
-  display: inline-block;
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: #fff;
-  box-shadow: 0 0 4px #fff;
-}
-
-.finish-text {
-  color: #fff;
-  font-size: 9px;
-  font-weight: 700;
-  letter-spacing: 1px;
-  font-family: var(--font);
-  text-shadow: 0 0 4px rgba(0, 0, 0, 0.8);
-}
-
-.finish-label {
-  color: #fff;
-  font-size: 9px;
-  font-weight: 700;
-  letter-spacing: 1px;
-  font-family: inherit;
-  white-space: nowrap;
-  text-shadow: 0 0 4px rgba(0, 0, 0, 0.8);
-}
-
 .turn-label {
   color: rgba(255, 255, 255, 0.45);
   font-size: 9px;
@@ -229,34 +189,6 @@
 .car-arrow {
   background: none !important;
   border: none !important;
-}
-
-/* uPlot overrides for dark theme */
-.u-title {
-  font-family: inherit !important;
-  font-size: 12px !important;
-  font-weight: 600 !important;
-  letter-spacing: 1px !important;
-  color: #888 !important;
-  padding: 4px 0 0 !important;
-}
-
-.u-legend {
-  font-family: inherit !important;
-  font-size: 11px !important;
-  padding: 2px 8px !important;
-}
-
-.u-legend .u-series td {
-  color: #999 !important;
-}
-
-.u-legend .u-value {
-  color: #ddd !important;
-}
-
-.u-cursor-pt {
-  display: none !important;
 }
 
 /* ── GAUGES (speed/tps) ── */

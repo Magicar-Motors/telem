@@ -1,6 +1,4 @@
 import * as http from "node:http";
-import * as fs from "node:fs";
-import * as path from "node:path";
 import { execSync } from "node:child_process";
 import { pack } from "msgpackr";
 import { WalEngine, WalEntry } from "./wal.js";
@@ -37,7 +35,6 @@ export function createServer(
   wal: WalEngine,
   sessions: SessionStore,
   lapDetector?: LapDetector,
-  tracksDir?: string,
   udpSender?: UdpSender,
 ): http.Server {
   const server = http.createServer(async (req, res) => {

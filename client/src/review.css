@@ -93,11 +93,6 @@
   letter-spacing: 1px;
 }
 
-.review-session-laps {
-  font-size: 8px;
-  color: var(--text);
-}
-
 .review-session-del {
   position: absolute;
   top: 4px;
@@ -414,17 +409,6 @@
   letter-spacing: 1px;
 }
 
-.review-gauge-gear { display: none; }
-
-.review-gauge-gear_unused {
-  margin-left: auto;
-  font-size: 28px;
-  font-weight: 700;
-  color: var(--accent);
-  line-height: 1;
-  text-shadow: 0 0 10px rgba(255, 107, 53, 0.4);
-}
-
 .review-brake {
   display: flex;
   gap: 3px;
@@ -559,12 +543,3 @@
   box-shadow: 0 0 6px rgba(255, 107, 53, 0.5);
 }
 
-.no-lap-selected {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex: 1;
-  color: var(--text-dim);
-  font-size: 11px;
-  letter-spacing: 2px;
-}

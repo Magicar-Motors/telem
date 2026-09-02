@@ -88,20 +88,4 @@
 }
 
 /* smaller variant for sidebar use */
-.dropdown.dropdown-sm .dropdown-trigger {
-  font-size: 8px;
-  letter-spacing: 1px;
-  padding: 4px 6px;
-  color: var(--text);
-  border-color: var(--border-bright);
-}
 
-.dropdown.dropdown-sm .dropdown-trigger:hover {
-  border-color: var(--text);
-}
-
-.dropdown.dropdown-sm .dropdown-item {
-  font-size: 8px;
-  padding: 4px 8px;
-  text-transform: none;
-}

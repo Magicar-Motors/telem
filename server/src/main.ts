@@ -30,7 +30,7 @@ async function main(): Promise<void> {
   const sessions = new SessionStore(DATA_DIR);
   const lapDetector = new LapDetector(TRACKS_DIR, sessions, wal);
   const udpSender = new UdpSender(wal);
-  const server = createServer(wal, sessions, lapDetector, TRACKS_DIR, udpSender);
+  const server = createServer(wal, sessions, lapDetector, udpSender);
 
   // Wire GPS data to lap detector
   let lastLat = 0;
