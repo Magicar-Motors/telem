@@ -84,3 +84,34 @@
 .util-gauge-foot.util-gauge-partial {
   color: var(--amber);
 }
+
+/* Review column: match the speed/rpm gauges beside it — value under the
+   label in large type, full-height segments. */
+.util-gauge.full {
+  gap: 6px;
+}
+
+.util-gauge.full .util-gauge-head {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+}
+
+.util-gauge.full .util-gauge-value {
+  font-size: 32px;
+  text-shadow: 0 0 10px rgba(255, 255, 255, 0.2);
+}
+
+.util-gauge.full .util-gauge-unit {
+  font-size: 11px;
+}
+
+.util-gauge.full .util-gauge-track {
+  height: 16px;
+}
+
+.util-gauge.full .util-gauge-seg {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  transition: background 0.05s;
+}

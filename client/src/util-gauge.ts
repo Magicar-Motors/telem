@@ -4,7 +4,7 @@ import "./util-gauge.css";
  *  Both compute the number differently — live accumulates it, review fits it
  *  over the session's laps — so this only renders. */
 
-const SEGMENTS = 20;
+const DEFAULT_SEGMENTS = 20;
 
 export interface UtilGaugeState {
   value: number | null;   // the big number and the bar: current when scrubbing
@@ -33,7 +33,7 @@ function segColor(i: number, total: number): string {
   return "#e0b020";
 }
 
-export function createUtilGauge(className = ""): UtilGauge {
+export function createUtilGauge(className = "", segments = DEFAULT_SEGMENTS): UtilGauge {
   const el = document.createElement("div");
   el.className = `util-gauge ${className}`.trim();
 
@@ -45,7 +45,7 @@ export function createUtilGauge(className = ""): UtilGauge {
 
   const track = document.createElement("div");
   track.className = "util-gauge-track";
-  for (let i = 0; i < SEGMENTS; i++) {
+  for (let i = 0; i < segments; i++) {
     const seg = document.createElement("div");
     seg.className = "util-gauge-seg";
     track.appendChild(seg);
@@ -81,11 +81,11 @@ export function createUtilGauge(className = ""): UtilGauge {
       `${avg}μ ${state.muY.toFixed(2)}/${state.muX.toFixed(2)} ${state.mode}${laps}`;
     foot.classList.toggle("util-gauge-partial", state.incomplete === true);
 
-    const lit = Math.round(Math.min(1, state.value) * SEGMENTS);
+    const lit = Math.round(Math.min(1, state.value) * segments);
     for (let i = 0; i < track.children.length; i++) {
       const s = track.children[i] as HTMLElement;
       if (i < lit) {
-        const c = segColor(i, SEGMENTS);
+        const c = segColor(i, segments);
         s.style.background = c;
         s.style.borderColor = c;
         s.style.boxShadow = `0 0 6px ${c}40`;

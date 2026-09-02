@@ -4,7 +4,7 @@ import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import "leaflet-rotate";
 import { TRACKS, type TrackDef } from "./track";
-import { speedToColor, throttleToColor, rpmToColor } from "./track-utils";
+import { speedToColor, throttleToColor, rpmToColor, interpolateColorRamp } from "./track-utils";
 import { createDropdown } from "./dropdown";
 import { formatTime, formatDate, getBestLapTime } from "./format";
 import { SERVER_URL } from "./server-url";
@@ -93,7 +93,7 @@ function activeCenterline(): Centerline {
   }
   return centerlineCache;
 }
-let trailMode: "speed" | "throttle" | "rpm" | "gear" | "brake" = "speed";
+let trailMode: TrailMode = "speed";
 let allLapsLines: L.Polyline[] = [];
 let aggVisible: Set<number> = new Set();
 let aggHighlight = -1; // index of highlighted lap, -1 = auto-best
@@ -202,13 +202,14 @@ function renderAggControls(): void {
 }
 
 // ── Trail mode dropdown (opens upward) ──
-type TrailMode = "speed" | "throttle" | "rpm" | "gear" | "brake";
+type TrailMode = "speed" | "throttle" | "rpm" | "gear" | "brake" | "traction";
 const trailModeDropdown = createDropdown("SPEED", "", "up");
 trailModeDropdown.setOptions([
   { value: "speed", label: "SPEED" },
   { value: "throttle", label: "THROTTLE" },
   { value: "rpm", label: "RPM" },
   { value: "brake", label: "BRAKE" },
+  { value: "traction", label: "TRACTION" },
 ]);
 trailModeDropdown.setValue("speed");
 trailModeDropdown.onChange = (v) => {
@@ -227,6 +228,23 @@ const GEAR_COLORS = ["#3498db", "#ffffff", "#f1c40f", "#ff6b35", "#e74c3c"];
 function gearToColor(gear: number): string {
   return GEAR_COLORS[Math.max(0, Math.min(gear - 1, GEAR_COLORS.length - 1))] ?? "#999";
 }
+/** Utilisation ramp, same reading as the gauge: dim, then amber through the
+ *  useful band, red at the envelope. */
+function tractionToColor(u: number): string {
+  return interpolateColorRamp(u, [
+    [0, [255, 255, 255]], [0.35, [224, 176, 32]],
+    [0.7, [255, 123, 69]], [1, [255, 68, 54]],
+  ]);
+}
+
+/** Utilisation per sample. Computed on demand rather than stored, so it cannot
+ *  go stale against an envelope that arrives after the lap does. */
+function tractionSeries(samples: { aLat: number; aLong: number }[]): number[] {
+  if (!sessionEnvelope) return new Array(samples.length).fill(0);
+  return samples.map((x) => utilization(
+    Math.abs(x.aLat) / G_MS2, Math.max(-x.aLong, 0) / G_MS2, sessionEnvelope!));
+}
+
 function rpmToColorByValue(rpm: number): string {
   return rpmToColor(Math.min(1, rpm / MAX_RPM));
 }
@@ -272,6 +290,13 @@ const trailFormat: Record<TrailMode, (i: number) => string> = {
   rpm: (i) => `${Math.round(lapRpms[i])} rpm`,
   gear: (i) => `gear ${Math.round(lapGears[i])}`,
   brake: (i) => lapBrakes[i] > 0.5 ? "brake ON" : "brake OFF",
+  traction: (i) => {
+    const x = lapFrame?.samples[i];
+    if (!x || !sessionEnvelope) return "-- grip";
+    const u = utilization(Math.abs(x.aLat) / G_MS2,
+                          Math.max(-x.aLong, 0) / G_MS2, sessionEnvelope);
+    return `${Math.round(u * 100)}% grip`;
+  },
 };
 
 function hideTrailTooltip() {
@@ -405,8 +430,9 @@ brakeWrap.innerHTML = `<div class="review-gauge-label">制動 BRAKE</div><div cl
 gaugesEl.appendChild(brakeWrap);
 const brakeEl = brakeWrap.querySelector("#rv-brake")!;
 
-const utilGauge = createUtilGauge();
-gaugesEl.appendChild(utilGauge.el);
+// Above brake, and sized like the speed and rpm gauges rather than a caption.
+const utilGauge = createUtilGauge("full", 32);
+gaugesEl.insertBefore(utilGauge.el, brakeWrap);
 
 function updateGaugeSegs(track: HTMLElement, fraction: number, colorFn: (idx: number, total: number) => string) {
   const segs = track.children;
@@ -463,12 +489,20 @@ const BRAKE_LEGEND: LegendStop[] = [
   { color: "#e74c3c", label: "ON" },
 ];
 
+const TRACTION_LEGEND: LegendStop[] = [
+  { color: tractionToColor(0), label: "0%" },
+  { color: tractionToColor(0.35), label: "35%" },
+  { color: tractionToColor(0.7), label: "70%" },
+  { color: tractionToColor(1), label: "100%" },
+];
+
 const LEGENDS: Record<TrailMode, { title: string; stops: LegendStop[] }> = {
   speed: { title: "SPEED", stops: SPEED_LEGEND },
   throttle: { title: "THROTTLE", stops: THROTTLE_LEGEND },
   rpm: { title: "RPM", stops: RPM_LEGEND },
   gear: { title: "GEAR", stops: GEAR_LEGEND },
   brake: { title: "BRAKE", stops: BRAKE_LEGEND },
+  traction: { title: "TRACTION", stops: TRACTION_LEGEND },
 };
 
 function renderLegend() {
@@ -918,6 +952,10 @@ async function computeSessionTraction(sess: Session): Promise<void> {
   sessionLapsTotal = sess.laps.length;
   sessionIncomplete = frames.length < sess.laps.length;
   refreshUtilGauge(currentSeekU());
+  if (trailMode === "traction") {
+    if (selectedLapIdx === -2) drawAggregateTrails(); else drawTrail();
+    renderLegend();
+  }
   // The envelope may have widened now that every lap is in, so redraw.
   updateSeek(parseInt(seekEl.value, 10));
 }
@@ -1136,11 +1174,12 @@ async function showAllLaps() {
     const rpms = S.map((x) => x.rpm);
     const brakes = S.map((x) => x.brake);
     const gears = S.map((x) => x.gear);
+    const gs = S.map((x) => ({ aLat: x.aLat, aLong: x.aLong }));
 
     const frac = lap.flag === "clean" ? 1 - (lap.time - bestTime) / timeRange : 0;
     const opacity = 0.15 + frac * 0.55;
 
-    aggregateLaps.push({ idx: i, coords, speeds, throttles, rpms, brakes, gears, opacity });
+    aggregateLaps.push({ idx: i, coords, speeds, throttles, rpms, brakes, gears, gs, opacity });
     await yieldToPaint(); // same burst as the traction pass, same fix
   }
 
@@ -1157,6 +1196,7 @@ interface AggregateLap {
   rpms: number[];
   brakes: number[];
   gears: number[];
+  gs: { aLat: number; aLong: number }[];
   opacity: number;
 }
 
@@ -1190,15 +1230,18 @@ function drawAggregateTrails(): void {
   const colorFnMap: Record<TrailMode, (v: number) => string> = {
     speed: speedToColor, throttle: throttleToColor, rpm: rpmToColorByValue,
     gear: gearToColor, brake: (v) => v > 0.5 ? "#e74c3c" : "rgba(255,255,255,0.3)",
+    traction: tractionToColor,
   };
   const colorFn = colorFnMap[trailMode];
-  const valKey: Record<TrailMode, keyof AggregateLap> = {
-    speed: "speeds", throttle: "throttles", rpm: "rpms", gear: "gears", brake: "brakes",
+  const valuesFor: Record<TrailMode, (al: AggregateLap) => number[]> = {
+    speed: (al) => al.speeds, throttle: (al) => al.throttles, rpm: (al) => al.rpms,
+    gear: (al) => al.gears, brake: (al) => al.brakes,
+    traction: (al) => tractionSeries(al.gs),
   };
-  const key = valKey[trailMode];
+  const pick = valuesFor[trailMode];
 
   function drawLap(al: AggregateLap, weight: number, opacity: number): void {
-    const values = al[key] as number[];
+    const values = pick(al);
     const segs = splitAtGaps(al.coords);
     for (const seg of segs) {
       const segStart = al.coords.indexOf(seg[0]);
@@ -1238,11 +1281,13 @@ function drawTrail() {
   if (lapCoords.length < 2) return;
 
   const valuesMap: Record<TrailMode, number[]> = {
-    speed: lapSpeeds, throttle: lapThrottles, rpm: lapRpms, gear: lapGears, brake: lapBrakes,
+    speed: lapSpeeds, throttle: lapThrottles, rpm: lapRpms, gear: lapGears,
+    brake: lapBrakes, traction: tractionSeries(lapFrame?.samples ?? []),
   };
   const colorFnMap: Record<TrailMode, (v: number) => string> = {
     speed: speedToColor, throttle: throttleToColor, rpm: rpmToColorByValue,
     gear: gearToColor, brake: (v) => v > 0.5 ? "#e74c3c" : "rgba(255,255,255,0.3)",
+    traction: tractionToColor,
   };
   const values = valuesMap[trailMode];
   const colorFn = colorFnMap[trailMode];
