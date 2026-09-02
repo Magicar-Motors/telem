@@ -58,20 +58,25 @@ equations want.
 
 | Channel | Source | Logged unit | Rate |
 |---|---|---|---|
-| `gps_lat` / `gps_lon` | RaceBox | deg, 1e-7 | 23.9 Hz |
-| `gps_speed` | RaceBox | **km/h** | 23.9 Hz |
-| `gps_altitude` | RaceBox | **m**, 0.1 m resolution | 23.9 Hz |
-| `gps_heading` | RaceBox | deg | 23.9 Hz |
-| `gps_satellites` / `gps_fix` | RaceBox | count / enum | 23.9 Hz |
-| `g_force_x` / `_y` / `_z` | RaceBox | **g** | 23.9 Hz |
-| `gyro_x` / `_y` / `_z` | RaceBox | deg/s | 23.9 Hz |
-| `throttle_pos` | Mega A9 | % | 25 Hz |
-| `rpm` | Mega D18 | rpm, EMA α=0.3 | 25 Hz |
-| `brake` | Mega A5 | 0/1 | 25 Hz |
-| `manifold_pressure` | Mega A10 | kPa | 25 Hz |
-| `coolant_temp` / `oil_temp` | Mega A8 / A1 | °C | 25 Hz |
-| `oil_pressure` | Mega A0 | psi | 25 Hz |
-| `vss_hz` | Mega D19 | Hz | 25 Hz |
+| `gps_lat` / `gps_lon` | RaceBox | deg, 1e-7 | 22.2 Hz |
+| `gps_speed` | RaceBox | **km/h** | 22.2 Hz |
+| `gps_altitude` | RaceBox | **m**, 0.1 m resolution | 22.2 Hz |
+| `gps_heading` | RaceBox | deg | 22.2 Hz |
+| `gps_satellites` / `gps_fix` | RaceBox | count / enum | 22.2 Hz |
+| `g_force_x` / `_y` / `_z` | RaceBox | **g** | 22.2 Hz |
+| `gyro_x` / `_y` / `_z` | RaceBox | deg/s | 22.2 Hz |
+| `throttle_pos` | Mega A9 | % | 24.4 Hz |
+| `rpm` | Mega D18 | rpm, EMA α=0.3 | 24.4 Hz |
+| `brake` | Mega A5 | 0/1 | 24.4 Hz |
+| `manifold_pressure` | Mega A10 | kPa | 24.4 Hz |
+| `coolant_temp` / `oil_temp` | Mega A8 / A1 | °C | 24.4 Hz |
+| `oil_pressure` | Mega A0 | psi | 24.4 Hz |
+| `vss_hz` | Mega D19 | Hz | 24.4 Hz |
+
+Rates are measured from the archive, not assumed: GPS/IMU ticks land every
+45 ms and the Mega every 41 ms. The two producers interleave, so the WAL
+itself ticks at 50 ms — which is why a naive per-tick loop looks like 50 Hz
+data when the underlying GPS is 22 Hz.
 
 **Not available:** ambient temperature and barometric pressure. `rho` falls
 back to 1.225 kg/m³, as the source spec allows. Nothing else needs them.
@@ -190,42 +195,41 @@ than mean so a long banked straight does not drag it. Record the value in
 `LapQuality.aLatBias` — if it moves between sessions the box was remounted,
 and that is worth seeing.
 
-### Sign convention — unresolved, and the source spec is internally inconsistent
+### Sign convention — measured
 
-This needs settling before any of the three modules is correct.
+**`g_force_x` is braking-positive.** Correlating it against `dv/dt` over six
+clean laps from `archive/2026-08-22_23-sonoma-bypass.telem` gives
+**r = -0.93** (per-lap range -0.92 to -0.95). Under braking the car slows,
+`dv/dt` is negative, and `g_force_x` is positive.
 
-The existing code establishes that `g_force_x` is **positive under
-acceleration**. `client/src/gcircle-renderer.ts`:
+That settles it, and it means the source spec was right on both counts and
+consistent with the existing code:
 
-```ts
-export function toDisplayAxes(gx: number, gy: number): GPoint {
-  return { x: -gy, y: -gx };   // braking(+) = up  ⇒  braking ⇒ gx < 0
-}
+- Module 1's `ax > 0` is braking, with `ax` the raw `g_force_x`.
+- Module 2's `a_imu = -g_force_x - sin_th` is forward-positive, comparable
+  to `a_gps = dv/dt`.
+- `toDisplayAxes()` returns `y: -gx` and the canvas y axis points down, so
+  braking-positive `gx` moves the dot up, matching its `braking(+) = up`
+  comment.
+
+The hazard is real but narrower than a contradiction: **modules 1 and 2 use
+opposite longitudinal conventions in adjacent sections without saying so.**
+That is how sign bugs get written even when every individual formula is
+correct.
+
+**Resolution.** `LapSample.aLong` is **forward positive**, matching `a_gps`,
+so the two are directly comparable and there is exactly one convention below
+the ingest layer:
+
+```
+aLong = -g_force_x * 9.80665      // m/s^2, forward positive
 ```
 
-The source spec then says two things that cannot both hold:
+Module 1's braking term is then `max(-aLong, 0)`.
 
-- Module 1: `mu_x = percentile(ax[ax > 0], 99.5)` — the *braking* limit, so
-  `ax > 0` means braking.
-- Module 2: `a_imu = -g_force_x - sin_th`, compared against
-  `a_gps = dv/dt`, which is positive when speeding up. For that comparison to
-  mean anything, `a_imu` must also be forward-positive — which makes
-  `-g_force_x` forward-positive, i.e. `g_force_x` braking-positive.
-
-Module 1 wants `ax` braking-positive while module 2 needs `-g_force_x`
-forward-positive. Both cannot be true, and one of them contradicts
-`toDisplayAxes()`.
-
-**Resolution.** `LapSample.aLong` is **forward positive**, matching
-`a_gps = dv/dt` so the two are directly comparable. Module 1's braking term
-becomes `max(-aLong, 0)`. Then verify empirically before trusting any output:
-
-> Take one clean lap, plot `aLong` against `dv/dt`. Positive correlation
-> means the convention is right. Negative correlation means `g_force_x`
-> needs flipping in the ingest layer, in exactly one place.
-
-Add this as an assertion in the ingest layer, not a comment: if the
-correlation over a lap is negative, mark `usable: false` and surface it.
+Keep the correlation as a runtime assertion rather than a comment: if
+`r(aLong, dv/dt)` over a lap is negative, the box was remounted or the
+firmware changed axes — mark `usable: false` and surface it.
 
 ---
 
@@ -254,6 +258,14 @@ Sample eligibility, all required:
 - `minSatellites >= 5`
 
 Percentile, never max. Curb strikes spike past 1.5 g and blow out the ceiling.
+
+Measured on six clean laps, `percentile(abs(aLat), 99.5)` lands at
+**1.01-1.16 g**, straddling the ~1.13 g warm figure the source spec cites.
+The fit is sound on real data.
+
+The `aLat` bias is small — median straight-line lateral is **-0.013 to
++0.005 g** across those laps, so the box is mounted close to square. Still
+worth removing and recording, since the point is to notice when it changes.
 
 ### Per-sample utilization
 
@@ -308,10 +320,16 @@ selection.
 
 `server/src/analysis/grade.ts`
 
-Sonoma runs ~170 m of elevation per lap with instantaneous grades to 15%. A
-10% grade contributes 0.10 g; measured longitudinal accelerations run
-0.08–0.17 g. **The error term is the same size as the signal.** Every
-longitudinal number and the whole of module 3 depend on this.
+Measured over the archive, a Sonoma bypass lap is **3980 m with ~50 m of
+elevation range** — not the ~170 m the source spec states, which looks like a
+feet/metres slip. The published figure for the circuit is ~160 ft, so 50 m is
+the right number.
+
+The motivation survives the correction intact. Measured grade runs
+p1 = -0.128 to p99 = +0.160, peaking at 0.185. A 13% grade contributes
+0.13 g, against longitudinal accelerations of 0.08–0.17 g. **The error term
+is the same size as the signal.** Every longitudinal number and the whole of
+module 3 depend on this.
 
 ### Grade
 
@@ -324,6 +342,11 @@ GPS altitude is much noisier than GPS position and needs a heavier window
 than any other channel. Clamp before use — unclamped outliers produce
 nonsense at low speed, where `d(s)` approaches zero. Guard that division
 explicitly: below ~2 m/s, hold the previous grade rather than dividing.
+
+**Raise the clamp to +/- 0.20.** At +/- 0.15 it clips 2.3-2.6% of real
+samples on this circuit, where measured grade reaches 0.185. That is genuine
+terrain being flattened, not outlier rejection. 0.20 still catches the
+altitude spikes the clamp exists for.
 
 ### Two independent longitudinal accelerations
 
