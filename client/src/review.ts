@@ -43,6 +43,9 @@ let selectedLapIdx = -1;
 let selectLapGen = 0;
 const inflightFetches = new Map<string, { background: boolean }>();
 const inflightPromises = new Map<string, Promise<{ ticks: any[] }>>();
+/** Set the first time a WAL fetch cannot reach the server. Bulk work checks it
+ *  so one offline session does not fire a request per uncached lap. */
+let serverUnreachable = false;
 let lapTicks: WalTick[] = [];
 let lapCoords: [number, number][] = [];
 let lapSpeeds: number[] = [];
@@ -668,10 +671,12 @@ async function fetchWalRangeRemote(
     const ticks = unpack(new Uint8Array(buf)) as any[];
     const data = { ticks };
     await cacheSet(cacheKey, data);
+    serverUnreachable = false;
     return data;
   } catch {
     const cached = await cacheGet<{ ticks: any[] }>(cacheKey);
     if (cached) { setStatus("OFFLINE (CACHED)"); return cached; }
+    serverUnreachable = true;
     setStatus("OFFLINE", "error");
     throw new Error("Server unreachable and no cached data");
   } finally {
@@ -825,31 +830,49 @@ async function computeSessionTraction(sess: Session): Promise<void> {
   utilGauge.set(null);
   if (sess.laps.length === 0) return;
 
-  const settled = await Promise.allSettled(sess.laps.map(async (lap, i) => {
-    const cacheKey = `/lap/${lap.startSeq}-${lap.endSeq}`;
-    // Join the fetch selectLap may already have in flight rather than racing it.
-    let p = inflightPromises.get(cacheKey);
-    if (!p) {
-      p = fetchWalRange(lap.startSeq, lap.endSeq, "", cacheKey, false);
-      inflightPromises.set(cacheKey, p);
-      p.finally(() => inflightPromises.delete(cacheKey));
-    }
-    return buildLapFrame((await p).ticks, i, lap.flag, activeCenterline());
+  // Cache first, all at once — the normal case, where nothing hits the network.
+  const frames: (LapFrame | undefined)[] = new Array(sess.laps.length);
+  const gaps: number[] = [];
+  await Promise.all(sess.laps.map(async (lap, i) => {
+    const cached = await cacheGet<{ ticks: any[] }>(`/lap/${lap.startSeq}-${lap.endSeq}`);
+    if (cached) frames[i] = buildLapFrame(cached.ticks, i, lap.flag, activeCenterline());
+    else gaps.push(i);
   }));
+  gaps.sort((a, b) => a - b); // cacheGet resolves out of order; fetch in lap order
+
+  // Then fill the gaps one at a time, stopping at the first unreachable. In
+  // parallel these all launch before any of them can report the server is
+  // down: Sudesh Track D2S3 is 1 of 9 traces, so that is eight doomed requests
+  // on every session select.
+  for (const i of gaps) {
+    if (tractionFor !== sess.id) return;
+    if (serverUnreachable) break;
+    const lap = sess.laps[i];
+    const cacheKey = `/lap/${lap.startSeq}-${lap.endSeq}`;
+    try {
+      let p = inflightPromises.get(cacheKey);
+      if (!p) {
+        p = fetchWalRange(lap.startSeq, lap.endSeq, "", cacheKey, false);
+        inflightPromises.set(cacheKey, p);
+        p.finally(() => inflightPromises.delete(cacheKey)).catch(() => {});
+      }
+      frames[i] = buildLapFrame((await p).ticks, i, lap.flag, activeCenterline());
+    } catch {
+      break;
+    }
+  }
 
   if (tractionFor !== sess.id) return; // a different session was picked meanwhile
 
-  const frames = settled
-    .filter((r): r is PromiseFulfilledResult<LapFrame> => r.status === "fulfilled")
-    .map((r) => r.value);
-  if (frames.length === 0) return;
+  const usable = frames.filter((f): f is LapFrame => f !== undefined);
+  if (usable.length === 0) return;
 
   // Envelope over every lap — an out-lap still holds the peaks it holds.
   // The mean is clean laps only: crawling out of the pits is not driving, and
   // one long in-lap otherwise halves the session figure.
-  const env = fitEnvelope(frames);
-  const scored = frames.filter((f) => f.flag === "clean");
-  const basis = scored.length > 0 ? scored : frames;
+  const env = fitEnvelope(usable);
+  const scored = usable.filter((f) => f.flag === "clean");
+  const basis = scored.length > 0 ? scored : usable;
   let sum = 0;
   let n = 0;
   for (const f of basis) {
@@ -865,7 +888,7 @@ async function computeSessionTraction(sess: Session): Promise<void> {
     meanU: sessionMeanU, muY: env.muY, muX: env.muX,
     mode: env.mode, sampleCount: n,
     lapsUsed: basis.length, lapsTotal: sess.laps.length,
-    incomplete: frames.length < sess.laps.length,
+    incomplete: usable.length < sess.laps.length,
   });
   // The envelope may have widened now that every lap is in, so redraw.
   updateSeek(parseInt(seekEl.value, 10));
@@ -1003,7 +1026,9 @@ async function selectLap(idx: number, forceRefresh = false) {
     const isLastLap = session!.laps.length > 0 && idx === session!.laps.length - 1;
     fetchPromise = fetchWalRange(lap.startSeq, lap.endSeq, channels, cacheKey, forceRefresh, isLastLap);
     inflightPromises.set(cacheKey, fetchPromise);
-    fetchPromise.finally(() => inflightPromises.delete(cacheKey));
+    // .finally() returns a new promise that rejects with the same reason, and
+    // nothing awaits that one — hence "Uncaught (in promise)" on every miss.
+    fetchPromise.finally(() => inflightPromises.delete(cacheKey)).catch(() => {});
   } else {
     // Reusing inflight fetch — clear display and show loading
     lapTicks = []; lapCoords = []; lapSpeeds = []; lapThrottles = [];
