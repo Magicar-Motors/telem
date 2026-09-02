@@ -1,0 +1,73 @@
+.util-gauge {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-family: var(--font);
+}
+
+.util-gauge-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.util-gauge-label {
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.util-gauge-value {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text-bright);
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+.util-gauge-unit {
+  font-size: 9px;
+  color: var(--text);
+  letter-spacing: 1px;
+  margin-left: 1px;
+}
+
+.util-gauge-track {
+  display: flex;
+  gap: 2px;
+  height: 8px;
+  transform: skewX(-12deg);
+}
+
+.util-gauge-seg {
+  flex: 1;
+  border: 1px solid var(--border-bright);
+  background: transparent;
+}
+
+.util-gauge-foot {
+  font-size: 8px;
+  letter-spacing: 1px;
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* Dashboard: overlays the g-force panel's bottom-left, the way .panel-label
+   overlays its top-left, so the canvas keeps the whole panel. */
+.util-gauge.on-panel {
+  position: absolute;
+  left: 6px;
+  bottom: 5px;
+  width: 116px;
+  z-index: 2;
+  pointer-events: none;
+}
+
+.util-gauge.on-panel .util-gauge-value {
+  font-size: 14px;
+}

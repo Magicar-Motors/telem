@@ -59,6 +59,22 @@ export interface TractionResult {
   segments: Segment[];
 }
 
+/** The best this car has shown: the maximum over the six clean laps in
+ *  archive/2026-08-22_23-sonoma-bypass.telem. Live sessions start here rather
+ *  than from nothing, since a running max seeded at zero reads 100% for the
+ *  first corner of every session. It still grows if the car does better. */
+export const REFERENCE_ENVELOPE: Envelope = {
+  muY: 1.387, muX: 1.146, mode: "max", sampleCount: 16866, lapCount: 6,
+};
+
+/** Widen an envelope to admit a sample that exceeded it. */
+export function growEnvelope(env: Envelope, aLatG: number, brakeG: number): Envelope {
+  const muY = Math.max(env.muY, Math.abs(aLatG));
+  const muX = Math.max(env.muX, brakeG);
+  if (muY === env.muY && muX === env.muX) return env;
+  return { ...env, muY, muX, sampleCount: env.sampleCount + 1 };
+}
+
 /** A lap is eligible for the fit on data validity alone. There is deliberately
  *  no cold-tyre exclusion: a cold lap cannot lower a maximum. */
 function eligible(f: LapFrame, minSats: number): boolean {

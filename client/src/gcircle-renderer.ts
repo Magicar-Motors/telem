@@ -17,10 +17,18 @@ const GRID_TEXT = "rgba(255, 255, 255, 0.2)";
 const AXIS_LABEL = "rgba(255, 107, 53, 0.5)";
 const DOT_COLOR = "#ff6b35";
 const TEXT_BRIGHT = "#eee";
+const LIMIT_LINE = "rgba(255, 255, 255, 0.30)";
 
 export interface GPoint {
   x: number;
   y: number;
+}
+
+/** Lateral and braking limits in g. Braking only — the car is power-limited
+ *  on exit, not traction-limited, so the acceleration half is not measured. */
+export interface GEnvelope {
+  muY: number;
+  muX: number;
 }
 
 export interface GCircleCanvas {
@@ -71,7 +79,12 @@ export function emaStep(prev: GPoint | null, next: GPoint): GPoint {
   };
 }
 
-export function drawGCircle(c: GCircleCanvas, cur: GPoint, trail: readonly GPoint[]): void {
+export function drawGCircle(
+  c: GCircleCanvas,
+  cur: GPoint,
+  trail: readonly GPoint[],
+  envelope?: GEnvelope | null,
+): void {
   const { ctx, w, h } = c;
   if (w === 0 || h === 0) return;
 
@@ -119,6 +132,24 @@ export function drawGCircle(c: GCircleCanvas, cur: GPoint, trail: readonly GPoin
   ctx.textBaseline = "bottom";
   for (const g of RING_STEPS) {
     ctx.fillText(`${g}g`, cx + 3, cy - g * scale - 2);
+  }
+
+  if (envelope && envelope.muY > 0 && envelope.muX > 0) {
+    const rx = envelope.muY * scale;
+    const ry = envelope.muX * scale;
+    ctx.strokeStyle = LIMIT_LINE;
+    ctx.lineWidth = 1.5;
+    // Braking half solid: that is the half utilisation is measured against.
+    ctx.beginPath();
+    ctx.ellipse(cx, cy, rx, ry, 0, Math.PI, 2 * Math.PI);
+    ctx.stroke();
+    // Acceleration half dashed, to show it is drawn for shape, not measured.
+    ctx.setLineDash([3, 4]);
+    ctx.beginPath();
+    ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.lineWidth = 1;
   }
 
   ctx.fillStyle = AXIS_LABEL;

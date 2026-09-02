@@ -1,5 +1,8 @@
 import { describe, it, expect } from "vitest";
-import { fitEnvelope, analyzeTraction, utilization, type Envelope } from "./traction.js";
+import {
+  fitEnvelope, analyzeTraction, utilization, growEnvelope,
+  REFERENCE_ENVELOPE, type Envelope,
+} from "./traction.js";
 import { G_MS2, type LapFrame, type LapSample, type LapFlag } from "./ingest.js";
 
 function frameOf(
@@ -213,5 +216,45 @@ describe("max mode, same scope", () => {
     const env = fitEnvelope([older]);
     expect(analyzeTraction(breakthrough, env).distribution.at(-1)!.fraction)
       .toBeCloseTo(1, 6);
+  });
+});
+
+describe("growEnvelope", () => {
+  const base: Envelope = { muY: 1.0, muX: 0.8, mode: "max", sampleCount: 10, lapCount: 1 };
+
+  it("returns the same object when nothing is exceeded", () => {
+    expect(growEnvelope(base, 0.9, 0.7)).toBe(base);
+  });
+
+  it("widens lateral and braking independently", () => {
+    expect(growEnvelope(base, 1.3, 0.5).muY).toBeCloseTo(1.3, 6);
+    expect(growEnvelope(base, 1.3, 0.5).muX).toBeCloseTo(0.8, 6);
+    expect(growEnvelope(base, 0.5, 1.1).muX).toBeCloseTo(1.1, 6);
+  });
+
+  it("treats a left turn the same as a right one", () => {
+    expect(growEnvelope(base, -1.4, 0).muY).toBeCloseTo(1.4, 6);
+  });
+
+  it("keeps utilisation at or below 1 for the sample that grew it", () => {
+    const grown = growEnvelope(base, 1.5, 0.9);
+    expect(utilization(1.5, 0, grown)).toBeCloseTo(1, 6);
+    expect(utilization(0, 0.9, grown)).toBeCloseTo(1, 6);
+  });
+});
+
+describe("REFERENCE_ENVELOPE", () => {
+  it("matches what the archive measured, so live does not start from nothing", () => {
+    expect(REFERENCE_ENVELOPE.muY).toBeCloseTo(1.387, 3);
+    expect(REFERENCE_ENVELOPE.muX).toBeCloseTo(1.146, 3);
+    expect(REFERENCE_ENVELOPE.mode).toBe("max");
+  });
+
+  it("keeps a first corner well under the limit instead of pinning at 100%", () => {
+    // A zero-seeded running max reads 1.0 on its very first sample.
+    const cold: Envelope = { muY: 0, muX: 0, mode: "max", sampleCount: 0, lapCount: 0 };
+    const grown = growEnvelope(cold, 0.7, 0);
+    expect(utilization(0.7, 0, grown)).toBeCloseTo(1, 6);
+    expect(utilization(0.7, 0, REFERENCE_ENVELOPE)).toBeLessThan(0.55);
   });
 });

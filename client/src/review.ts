@@ -20,6 +20,10 @@ import {
   buildLapFrame, buildCenterline, G_MS2,
   type Centerline, type LapFrame,
 } from "../../server/src/analysis/ingest";
+import {
+  fitEnvelope, utilization, type Envelope,
+} from "../../server/src/analysis/traction";
+import { createUtilGauge } from "./util-gauge";
 
 const TILES_SAT = "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}";
 const TILE_OPTS_SAT: L.TileLayerOptions = { maxZoom: 20 };
@@ -48,6 +52,9 @@ let lapGears: number[] = [];
 let lapBrakes: number[] = [];
 let lapTimestamps: number[] = [];
 let lapFrame: LapFrame | null = null;
+let sessionEnvelope: Envelope | null = null;
+let sessionMeanU: number | null = null;
+let tractionFor: string | null = null;
 
 let centerlineCache: Centerline | null = null;
 let centerlineFor: typeof trackDef | null = null;
@@ -321,7 +328,7 @@ function updateGCircle(seekIdx = -1) {
     gLastIdx = seekIdx;
   }
 
-  drawGCircle(gCanvas, gEma ?? { x: 0, y: 0 }, gTrail);
+  drawGCircle(gCanvas, gEma ?? { x: 0, y: 0 }, gTrail, sessionEnvelope);
 }
 
 // ── Gauges ──
@@ -369,6 +376,9 @@ brakeWrap.className = "review-gauge";
 brakeWrap.innerHTML = `<div class="review-gauge-label">制動 BRAKE</div><div class="review-brake" id="rv-brake">${Array(10).fill('<div class="review-brake-seg"></div>').join("")}</div>`;
 gaugesEl.appendChild(brakeWrap);
 const brakeEl = brakeWrap.querySelector("#rv-brake")!;
+
+const utilGauge = createUtilGauge();
+gaugesEl.appendChild(utilGauge.el);
 
 function updateGaugeSegs(track: HTMLElement, fraction: number, colorFn: (idx: number, total: number) => string) {
   const segs = track.children;
@@ -803,6 +813,43 @@ function renderSessionList() {
   });
 }
 
+/** Envelope and mean utilisation over the whole session. Cache-only: a session
+ *  whose laps have not been fetched yet simply contributes what it has. */
+async function computeSessionTraction(sess: Session): Promise<void> {
+  if (tractionFor === sess.id) return;
+  tractionFor = sess.id;
+  sessionEnvelope = null;
+  sessionMeanU = null;
+  utilGauge.set(null);
+
+  const frames: LapFrame[] = [];
+  for (let i = 0; i < sess.laps.length; i++) {
+    const lap = sess.laps[i];
+    const data = await cacheGet<{ ticks: any[] }>(`/lap/${lap.startSeq}-${lap.endSeq}`);
+    if (!data) continue;
+    frames.push(buildLapFrame(data.ticks, i, lap.flag, activeCenterline()));
+  }
+  if (tractionFor !== sess.id) return; // a different session was picked meanwhile
+  if (frames.length === 0) return;
+
+  const env = fitEnvelope(frames);
+  let sum = 0;
+  let n = 0;
+  for (const f of frames) {
+    for (const x of f.samples) {
+      if (x.gapMs > 250) continue;
+      sum += utilization(Math.abs(x.aLat) / G_MS2, Math.max(-x.aLong, 0) / G_MS2, env);
+      n++;
+    }
+  }
+  sessionEnvelope = env;
+  sessionMeanU = n > 0 ? sum / n : null;
+  utilGauge.set({
+    meanU: sessionMeanU, muY: env.muY, muX: env.muX,
+    mode: env.mode, sampleCount: n,
+  });
+}
+
 async function selectSession(id: string) {
   session = await apiFetch(`/sessions/${id}`);
   if (!session) return;
@@ -821,7 +868,9 @@ async function selectSession(id: string) {
   renderSessionList();
   renderLapList();
   updateSyncStatus();
-  if (session.laps.length > 0) selectLap(0);
+  if (session.laps.length > 0) await selectLap(0);
+  // After selectLap, so the chosen lap is in cache and counts toward the fit.
+  if (session) computeSessionTraction(session);
 }
 
 function updateMeta() {

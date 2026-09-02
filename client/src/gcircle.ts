@@ -1,5 +1,8 @@
 import { TelemetryManager } from "./telemetry";
 import {
+  REFERENCE_ENVELOPE, growEnvelope, utilization, type Envelope,
+} from "../../server/src/analysis/traction";
+import {
   createGCircleCanvas,
   drawGCircle,
   emaStep,
@@ -8,8 +11,16 @@ import {
   type GPoint,
 } from "./gcircle-renderer";
 
+export interface SessionUtil {
+  meanU: number | null;
+  envelope: Envelope;
+  sampleCount: number;
+}
+
 export interface GCirclePanel {
   update: () => void;
+  sessionUtil: () => SessionUtil;
+  resetSession: () => void;
 }
 
 export function createGCircle(
@@ -19,6 +30,13 @@ export function createGCircle(
   const canvas = createGCircleCanvas(container);
   const trail: GPoint[] = [];
   let ema: GPoint | null = null;
+
+  let envelope: Envelope = REFERENCE_ENVELOPE;
+  let uSum = 0;
+  let uCount = 0;
+  // The render loop runs faster than the 22 Hz data, so accumulate only when
+  // the buffer has actually grown or the mean is just a count of frames.
+  let lastLen = -1;
 
   function update(): void {
     if (canvas.w === 0 || canvas.h === 0) return;
@@ -34,8 +52,27 @@ export function createGCircle(
     trail.push(ema);
     if (trail.length > G_TRAIL_LEN) trail.splice(0, trail.length - G_TRAIL_LEN);
 
-    drawGCircle(canvas, ema, trail);
+    if (len > 0 && len !== lastLen) {
+      lastLen = len;
+      // Raw sample, not the EWMA: smoothing would clip the peaks the envelope
+      // is made of.
+      const latG = -gy;
+      const brakeG = Math.max(gx, 0);
+      envelope = growEnvelope(envelope, latG, brakeG);
+      uSum += utilization(Math.abs(latG), brakeG, envelope);
+      uCount++;
+    }
+
+    drawGCircle(canvas, ema, trail, envelope);
   }
 
-  return { update };
+  return {
+    update,
+    sessionUtil: () => ({
+      meanU: uCount > 0 ? uSum / uCount : null,
+      envelope,
+      sampleCount: uCount,
+    }),
+    resetSession: () => { uSum = 0; uCount = 0; envelope = REFERENCE_ENVELOPE; },
+  };
 }

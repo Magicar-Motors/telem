@@ -5,6 +5,7 @@ import { createPanels, ChartPanel } from "./charts";
 import { createMaps, MapPanels } from "./map";
 import { createGCircle, GCirclePanel } from "./gcircle";
 import { createDiagnostics, DiagPanel } from "./diagnostics";
+import { createUtilGauge } from "./util-gauge";
 import { createLapTimes, LapTimesPanel } from "./laptimes";
 import { ConnectionState } from "./types";
 import { createDropdown } from "./dropdown";
@@ -136,6 +137,7 @@ mgr.connect = function () {
 let panels: ChartPanel[] = [];
 let maps: MapPanels;
 let gcircle: GCirclePanel;
+let utilGauge: ReturnType<typeof createUtilGauge>;
 let diag: DiagPanel;
 let lapTimes: LapTimesPanel;
 
@@ -162,7 +164,10 @@ function init() {
     document.getElementById("map-overview")!,
     mgr,
   );
-  gcircle = createGCircle(document.getElementById("gcircle")!, mgr);
+  const gcircleEl = document.getElementById("gcircle")!;
+  gcircle = createGCircle(gcircleEl, mgr);
+  utilGauge = createUtilGauge("on-panel");
+  gcircleEl.appendChild(utilGauge.el);
   diag = createDiagnostics(document.getElementById("diagnostics")!, mgr);
   lapTimes = createLapTimes(document.getElementById("laptimes")!, mgr);
   mgr.connect();
@@ -181,6 +186,11 @@ function loop() {
     for (const p of panels) p.update();
     maps.update();
     gcircle.update();
+    const su = gcircle.sessionUtil();
+    utilGauge.set({
+      meanU: su.meanU, muY: su.envelope.muY, muX: su.envelope.muX,
+      mode: su.envelope.mode, sampleCount: su.sampleCount,
+    });
     diag.update();
     lapTimes.update();
 
