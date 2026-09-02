@@ -275,7 +275,27 @@ Three modes exist so this is checkable on real data rather than argued:
 
 Report which mode produced the number next to the number.
 
-Measured on six archive laps, the two disagree in a way worth knowing about:
+**Measured, on six clean archive laps:**
+
+| | `max` | `p99.5` | max is |
+|---|---|---|---|
+| `mu_y` | 1.387 g | 1.114 g | +24.5% |
+| `mu_x` | 1.146 g | 0.876 g | +30.8% |
+| mean utilisation | 35-39% | 44-49% | |
+| share of lap at 85-100% | **0%** | 9% | |
+
+1.387 g is not a stock Accord on RS4s — that is the kerb strike, and 1.114 g
+is the tyre. The consequence is the whole of the last row: against the max
+envelope **no sample on any of these laps reaches 85%**, so the driver never
+appears to approach the limit anywhere on the circuit and there is nothing to
+rank. Against p99.5, 9% of the lap sits at 85-100%.
+
+The `>100%` bin is empty either way here, because the envelope was fitted
+over these same laps. It only fills when the scope differs — an all-time
+envelope against a new session, which is the arrangement that makes a maximum
+worth having.
+
+The rest, for reference:
 `percentile(abs(aLat), 99.5)` lands at 1.01–1.16 g. The braking figure moves
 far more across a session than the lateral one — 0.663 g on the first flying
 lap against 1.092 g by the sixth — so a per-session braking envelope was
