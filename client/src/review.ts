@@ -58,6 +58,31 @@ let lapFrame: LapFrame | null = null;
 let sessionEnvelope: Envelope | null = null;
 let sessionMeanU: number | null = null;
 let tractionFor: string | null = null;
+let sessionLapsUsed = 0;
+let sessionLapsTotal = 0;
+let sessionIncomplete = false;
+
+/** Utilisation of the sample under the scrubber, or null when nothing is
+ *  selected — in which case the gauge falls back to the session mean. */
+function currentSeekU(): number | null {
+  if (!sessionEnvelope || !lapFrame) return null;
+  const x = lapFrame.samples[parseInt(seekEl.value, 10)];
+  if (!x) return null;
+  return utilization(
+    Math.abs(x.aLat) / G_MS2, Math.max(-x.aLong, 0) / G_MS2, sessionEnvelope);
+}
+
+function refreshUtilGauge(current: number | null): void {
+  if (!sessionEnvelope) { utilGauge.set(null); return; }
+  utilGauge.set({
+    value: current ?? sessionMeanU,
+    sessionMeanU,
+    muY: sessionEnvelope.muY, muX: sessionEnvelope.muX,
+    mode: sessionEnvelope.mode, sampleCount: sessionEnvelope.sampleCount,
+    lapsUsed: sessionLapsUsed, lapsTotal: sessionLapsTotal,
+    incomplete: sessionIncomplete,
+  });
+}
 
 let centerlineCache: Centerline | null = null;
 let centerlineFor: typeof trackDef | null = null;
@@ -889,12 +914,10 @@ async function computeSessionTraction(sess: Session): Promise<void> {
   }
   sessionEnvelope = env;
   sessionMeanU = n > 0 ? sum / n : null;
-  utilGauge.set({
-    meanU: sessionMeanU, muY: env.muY, muX: env.muX,
-    mode: env.mode, sampleCount: n,
-    lapsUsed: basis.length, lapsTotal: sess.laps.length,
-    incomplete: frames.length < sess.laps.length,
-  });
+  sessionLapsUsed = basis.length;
+  sessionLapsTotal = sess.laps.length;
+  sessionIncomplete = frames.length < sess.laps.length;
+  refreshUtilGauge(currentSeekU());
   // The envelope may have widened now that every lap is in, so redraw.
   updateSeek(parseInt(seekEl.value, 10));
 }
@@ -1260,6 +1283,7 @@ function drawTrail() {
 
 function clearSeekDisplay() {
   if (posMarker) { posMarker.remove(); posMarker = null; }
+  refreshUtilGauge(null);   // nothing under the scrubber, so show the session mean
   seekTimeEl.textContent = "--";
   seekEpochEl.textContent = "";
   resetGTrail();
@@ -1300,6 +1324,7 @@ function updateSeek(idx: number) {
 
   // G-force dial
   updateGCircle(idx);
+  refreshUtilGauge(currentSeekU());
 
   // Speed gauge
   const spdKmh = lapSpeeds[idx] ?? 0;

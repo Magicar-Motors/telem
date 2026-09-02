@@ -54,7 +54,15 @@
   letter-spacing: 1px;
   color: var(--text-dim);
   font-variant-numeric: tabular-nums;
+  line-height: 1.35;
+}
+
+/* The panel overlay has a fixed width and the ACCEL label below it, so it
+   cannot afford to wrap; the review column can. */
+.util-gauge.on-panel .util-gauge-foot {
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* Dashboard: overlays the g-force panel's bottom-left, the way .panel-label

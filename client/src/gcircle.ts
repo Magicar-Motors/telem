@@ -12,6 +12,7 @@ import {
 } from "./gcircle-renderer";
 
 export interface SessionUtil {
+  currentU: number | null;   // utilisation of the newest sample
   meanU: number | null;
   envelope: Envelope;
   sampleCount: number;
@@ -37,6 +38,7 @@ export function createGCircle(
   // The render loop runs faster than the 22 Hz data, so accumulate only when
   // the buffer has actually grown or the mean is just a count of frames.
   let lastLen = -1;
+  let currentU: number | null = null;
 
   function update(): void {
     if (canvas.w === 0 || canvas.h === 0) return;
@@ -59,7 +61,8 @@ export function createGCircle(
       const latG = -gy;
       const longG = -gx;   // signed, forward positive — the hull needs both halves
       envelope = growEnvelope(envelope, latG, longG);
-      uSum += utilization(Math.abs(latG), Math.max(-longG, 0), envelope);
+      currentU = utilization(Math.abs(latG), Math.max(-longG, 0), envelope);
+      uSum += currentU;
       uCount++;
     }
 
@@ -69,10 +72,11 @@ export function createGCircle(
   return {
     update,
     sessionUtil: () => ({
+      currentU,
       meanU: uCount > 0 ? uSum / uCount : null,
       envelope,
       sampleCount: uCount,
     }),
-    resetSession: () => { uSum = 0; uCount = 0; envelope = REFERENCE_ENVELOPE; },
+    resetSession: () => { uSum = 0; uCount = 0; currentU = null; envelope = REFERENCE_ENVELOPE; },
   };
 }

@@ -7,7 +7,8 @@ import "./util-gauge.css";
 const SEGMENTS = 20;
 
 export interface UtilGaugeState {
-  meanU: number | null;   // 0-1+, null when there is nothing to show yet
+  value: number | null;   // the big number and the bar: current when scrubbing
+  sessionMeanU?: number | null;  // shown as "avg", the whole-session figure
   muY: number;            // g
   muX: number;            // g
   mode: string;           // shown next to the number; the spec asks for this
@@ -59,7 +60,7 @@ export function createUtilGauge(className = ""): UtilGauge {
   const valueEl = head.querySelector(".util-gauge-value") as HTMLElement;
 
   function set(state: UtilGaugeState | null): void {
-    if (!state || state.meanU === null) {
+    if (!state || state.value === null) {
       valueEl.innerHTML = `--<span class="util-gauge-unit">%</span>`;
       foot.textContent = "--";
       for (const seg of track.children) {
@@ -71,16 +72,16 @@ export function createUtilGauge(className = ""): UtilGauge {
       return;
     }
 
-    const pct = state.meanU * 100;
+    const pct = state.value * 100;
     valueEl.innerHTML = `${pct.toFixed(0)}<span class="util-gauge-unit">%</span>`;
-    const laps = state.lapsTotal
-      ? ` · ${state.lapsUsed ?? 0}/${state.lapsTotal} laps`
-      : "";
+    const avg = state.sessionMeanU != null
+      ? `avg ${(state.sessionMeanU * 100).toFixed(0)}% · ` : "";
+    const laps = state.lapsTotal ? ` · ${state.lapsUsed ?? 0}/${state.lapsTotal}` : "";
     foot.textContent =
-      `μy ${state.muY.toFixed(2)} μx ${state.muX.toFixed(2)} g · ${state.mode}${laps}`;
+      `${avg}μ ${state.muY.toFixed(2)}/${state.muX.toFixed(2)} ${state.mode}${laps}`;
     foot.classList.toggle("util-gauge-partial", state.incomplete === true);
 
-    const lit = Math.round(Math.min(1, state.meanU) * SEGMENTS);
+    const lit = Math.round(Math.min(1, state.value) * SEGMENTS);
     for (let i = 0; i < track.children.length; i++) {
       const s = track.children[i] as HTMLElement;
       if (i < lit) {

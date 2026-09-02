@@ -188,7 +188,8 @@ function loop() {
     gcircle.update();
     const su = gcircle.sessionUtil();
     utilGauge.set({
-      meanU: su.meanU, muY: su.envelope.muY, muX: su.envelope.muX,
+      value: su.currentU ?? su.meanU, sessionMeanU: su.meanU,
+      muY: su.envelope.muY, muX: su.envelope.muX,
       mode: su.envelope.mode, sampleCount: su.sampleCount,
     });
     diag.update();
