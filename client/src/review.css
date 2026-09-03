@@ -330,15 +330,17 @@
 }
 
 #review-map {
-  flex: 3;
-  min-height: 0;
+  flex: 1;
+  min-height: 140px;
   position: relative;
 }
 
 /* ── Telemetry panel ── */
+/* Sized by its content rather than a fixed share, so adding a gauge grows the
+   panel and shrinks the map instead of overflowing into the scrubber. */
 #review-telem {
-  flex: 2;
-  min-height: 0;
+  flex: 0 0 auto;
+  max-height: 62%;
   background: var(--panel-bg);
   border-top: 1px solid var(--border);
   display: flex;
@@ -354,10 +356,13 @@
   min-height: 0;
 }
 
+/* Stretches to whatever height the gauge column needs; the aspect ratio then
+   gives its width. height:100% would be circular now the row is content-sized. */
 #review-gcircle {
   aspect-ratio: 1;
-  height: 100%;
+  align-self: stretch;
   flex-shrink: 0;
+  min-height: 0;
 }
 
 #review-gcircle canvas {
@@ -370,8 +375,13 @@
   display: flex;
   flex-direction: column;
   justify-content: center;
-  gap: 16px;
+  /* Centred when there is room; on a short viewport falls back to start, so
+     the clip below takes the bottom rather than both ends. */
+  justify-content: safe center;
+  gap: 12px;
   min-width: 120px;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .review-gauge {
