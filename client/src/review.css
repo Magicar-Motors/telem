@@ -338,9 +338,11 @@
 /* ── Telemetry panel ── */
 /* Sized by its content rather than a fixed share, so adding a gauge grows the
    panel and shrinks the map instead of overflowing into the scrubber. */
+/* A fixed share rather than a cap: content-sized left the g circle stuck at
+   whatever the gauge column happened to need, with headroom going unused. */
 #review-telem {
   flex: 0 0 auto;
-  max-height: 40vh;
+  height: 40vh;
   background: var(--panel-bg);
   border-top: 1px solid var(--border);
   display: flex;
@@ -356,13 +358,14 @@
   min-height: 0;
 }
 
-/* Width-driven, so it never grows with the row. Stretching it meant a taller
-   panel made it wider until it ran off the left edge. */
+/* Square, matching the gauge column's height. It was the gauge column being
+   371px tall that made this huge, not a sizing loop — at 204px it lands
+   sensibly, and 18vw was binding well under that. */
 #review-gcircle {
   aspect-ratio: 1;
-  align-self: center;
-  width: clamp(120px, 18vw, 230px);
+  align-self: stretch;
   flex-shrink: 0;
+  min-height: 0;
 }
 
 #review-gcircle canvas {
@@ -381,6 +384,10 @@
   gap: 8px;
   min-width: 120px;
   min-height: 0;
+  /* The bars are skewX(-12deg), so each one's top left corner sits outside its
+     box. Padding gives that corner room inside the padding box, which is where
+     overflow clips — so the guard can stay without shearing the bars flat. */
+  padding: 0 6px;
   overflow: hidden;
 }
 

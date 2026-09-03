@@ -6,10 +6,10 @@ export const RING_STEPS = [0.5, 1.0, 1.5];
 export const G_TRAIL_LEN = 200;
 
 const EMA_ALPHA = 0.15;
-const PAD = 24;
-const AXIS_GAP = 18;
-const SIDE_GAP = 16;
-const TEXT_INSET = 8;
+const PAD = 17;
+const AXIS_GAP = 12;
+const SIDE_GAP = 11;
+const TEXT_INSET = 6;
 
 const GRID_DIM = "rgba(255, 255, 255, 0.06)";
 const GRID_LINE = "rgba(255, 255, 255, 0.1)";
