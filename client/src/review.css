@@ -6,6 +6,9 @@
   /* Fixed column for the number, so values start on the same x and the
      labels after them line up too. Wide enough for "4066 RPM". */
   --gauge-value-w: 108px;
+  /* Labels right-aligned in a column of their own, so they end on a common x
+     as well as starting on one. Sized for the widest, 開度 THROTTLE. */
+  --gauge-label-w: 104px;
 }
 
 /* ── Body ── */
@@ -398,7 +401,7 @@
    instead of shrinking them to do it. */
 .review-gauge {
   display: grid;
-  grid-template-columns: var(--gauge-value-w) auto 1fr;
+  grid-template-columns: var(--gauge-value-w) var(--gauge-label-w) 1fr;
   align-items: baseline;
   column-gap: 10px;
   row-gap: 3px;
@@ -418,6 +421,7 @@
 }
 
 .review-gauge-label {
+  text-align: right;
   font-size: 8px;
   font-weight: 700;
   letter-spacing: 2px;
