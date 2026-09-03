@@ -90,12 +90,11 @@
    column is far wider than the number needs. */
 .util-gauge.full {
   display: grid;
-  grid-template-columns: auto 1fr;
+  grid-template-columns: auto auto 1fr;
   grid-template-areas:
-    "label label"
-    "value foot"
-    "track track";
-  gap: 4px 10px;
+    "label value foot"
+    "track track track";
+  gap: 3px 10px;
   align-items: baseline;
 }
 
@@ -109,7 +108,7 @@
 
 .util-gauge.full .util-gauge-value {
   grid-area: value;
-  font-size: 24px;
+  font-size: 22px;
   text-shadow: 0 0 10px rgba(255, 255, 255, 0.2);
 }
 
@@ -126,7 +125,7 @@
 .util-gauge.full .util-gauge-track {
   grid-area: track;
   align-self: stretch;
-  height: 14px;
+  height: 12px;
 }
 
 .util-gauge.full .util-gauge-seg {
