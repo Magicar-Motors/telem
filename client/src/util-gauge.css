@@ -91,14 +91,11 @@
 .util-gauge.full {
   display: grid;
   grid-template-columns: auto auto 1fr;
-  grid-template-rows: auto 1fr;
   grid-template-areas:
     "label value foot"
     "track track track";
   gap: 3px 10px;
   align-items: baseline;
-  flex: 1 1 0;
-  min-height: 0;
 }
 
 .util-gauge.full .util-gauge-head {
@@ -128,8 +125,7 @@
 .util-gauge.full .util-gauge-track {
   grid-area: track;
   align-self: stretch;
-  min-height: 12px;
-  max-height: 26px;
+  height: var(--gauge-bar-h, 18px);
 }
 
 .util-gauge.full .util-gauge-seg {

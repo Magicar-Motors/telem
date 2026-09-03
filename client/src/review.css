@@ -1,5 +1,10 @@
 @import "./base.css";
 
+:root {
+  /* Every gauge bar on the review page, traction included. */
+  --gauge-bar-h: 18px;
+}
+
 /* ── Body ── */
 #review-body {
   display: flex;
@@ -374,6 +379,7 @@
   justify-content: center;
   /* Centred when there is room; on a short viewport falls back to start, so
      the clip below takes the bottom rather than both ends. */
+  justify-content: safe center;
   gap: 6px;
   min-width: 120px;
   min-height: 0;
@@ -390,14 +396,9 @@
 .review-gauge {
   display: grid;
   grid-template-columns: auto 1fr;
-  grid-template-rows: auto 1fr;
   align-items: baseline;
   column-gap: 10px;
   row-gap: 3px;
-  /* Share the row height rather than sitting centred in it — the bars grow
-     into the space instead of leaving it empty above and below. */
-  flex: 1 1 0;
-  min-height: 0;
 }
 
 .review-gauge-label { grid-row: 1; grid-column: 1; }
@@ -437,8 +438,7 @@
 .review-brake {
   display: flex;
   gap: 3px;
-  min-height: 10px;
-  max-height: 22px;
+  height: var(--gauge-bar-h);
   transform: skewX(-12deg);
   padding: 0 4px;
 }
@@ -459,8 +459,7 @@
 .review-seg-track {
   display: flex;
   gap: 2px;
-  min-height: 12px;
-  max-height: 26px;
+  height: var(--gauge-bar-h);
   transform: skewX(-12deg);
 }
 
