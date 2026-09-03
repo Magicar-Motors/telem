@@ -90,9 +90,11 @@
    column is far wider than the number needs. */
 .util-gauge.full {
   display: grid;
-  grid-template-columns: var(--gauge-value-w, 108px) var(--gauge-label-w, 104px) 1fr;
+  /* Caption sits with the number; the label goes to the far right, level with
+     the labels on the gauges above. */
+  grid-template-columns: var(--gauge-value-w, 108px) 1fr auto;
   grid-template-areas:
-    "value label foot"
+    "value foot label"
     "track track track";
   gap: 3px 10px;
   align-items: baseline;
@@ -119,7 +121,7 @@
 
 .util-gauge.full .util-gauge-foot {
   grid-area: foot;
-  text-align: right;
+  text-align: left;
   white-space: nowrap;
 }
 
