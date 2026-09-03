@@ -3,6 +3,9 @@
 :root {
   /* Every gauge bar on the review page, traction included. */
   --gauge-bar-h: 18px;
+  /* Fixed column for the number, so values start on the same x and the
+     labels after them line up too. Wide enough for "4066 RPM". */
+  --gauge-value-w: 108px;
 }
 
 /* ── Body ── */
@@ -380,7 +383,7 @@
   /* Centred when there is room; on a short viewport falls back to start, so
      the clip below takes the bottom rather than both ends. */
   justify-content: safe center;
-  gap: 6px;
+  gap: 5px;
   min-width: 120px;
   min-height: 0;
   /* The bars are skewX(-12deg), so each one's top left corner sits outside its
@@ -395,14 +398,16 @@
    instead of shrinking them to do it. */
 .review-gauge {
   display: grid;
-  grid-template-columns: auto 1fr;
+  grid-template-columns: var(--gauge-value-w) auto 1fr;
   align-items: baseline;
   column-gap: 10px;
   row-gap: 3px;
 }
 
-.review-gauge-label { grid-row: 1; grid-column: 1; }
-.review-gauge-header { grid-row: 1; grid-column: 2; }
+/* Number first, label after it. Brake has no number, so its label still
+   starts at the same x as everyone else's. */
+.review-gauge-header { grid-row: 1; grid-column: 1; }
+.review-gauge-label { grid-row: 1; grid-column: 2; }
 .review-gauge > .review-seg-track,
 .review-gauge > .review-brake { grid-row: 2; grid-column: 1 / -1; align-self: stretch; }
 
@@ -421,7 +426,7 @@
 }
 
 .review-gauge-value {
-  font-size: 22px;
+  font-size: 26px;
   font-weight: 700;
   color: #fff;
   line-height: 1;
