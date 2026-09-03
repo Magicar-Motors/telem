@@ -441,25 +441,25 @@
   letter-spacing: 1px;
 }
 
+/* One bar rather than ten segments — brake is a switch, and gradations
+   implied a pedal position the sensor does not measure. */
 .review-brake {
-  display: flex;
-  gap: 3px;
   height: var(--gauge-bar-h);
   transform: skewX(-12deg);
-  padding: 0 4px;
-}
-
-.review-brake-seg {
-  flex: 1;
   background: rgba(255, 255, 255, 0.03);
   border: 1px solid rgba(255, 255, 255, 0.05);
-  transition: background 0.05s;
+  transition: background 0.05s, box-shadow 0.05s;
 }
 
-.review-brake.active .review-brake-seg {
+.review-brake.active {
   background: var(--red);
   border-color: var(--red);
-  box-shadow: 0 0 6px rgba(231, 76, 60, 0.4);
+  box-shadow: 0 0 8px rgba(255, 68, 54, 0.35);
+}
+
+.review-gauge-value.brake-on {
+  color: var(--red);
+  text-shadow: 0 0 10px rgba(255, 68, 54, 0.3);
 }
 
 .review-seg-track {

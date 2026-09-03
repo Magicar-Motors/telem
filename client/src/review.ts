@@ -426,9 +426,21 @@ const rpmValueEl = rpmGauge.querySelector("#rv-rpm")!;
 // Brake bar
 const brakeWrap = document.createElement("div");
 brakeWrap.className = "review-gauge";
-brakeWrap.innerHTML = `<div class="review-gauge-label">制動 BRAKE</div><div class="review-brake" id="rv-brake">${Array(10).fill('<div class="review-brake-seg"></div>').join("")}</div>`;
+// One bar, not ten segments: brake is a switch, and gradations implied a
+// pedal position the sensor does not measure.
+brakeWrap.innerHTML =
+  `<div class="review-gauge-header"><span class="review-gauge-value" id="rv-brake-value">--</span></div>` +
+  `<div class="review-gauge-label">制動 BRAKE</div>` +
+  `<div class="review-brake" id="rv-brake"></div>`;
 gaugesEl.appendChild(brakeWrap);
 const brakeEl = brakeWrap.querySelector("#rv-brake")!;
+const brakeValueEl = brakeWrap.querySelector("#rv-brake-value")!;
+
+function setBrake(on: boolean | null): void {
+  brakeEl.classList.toggle("active", on === true);
+  brakeValueEl.textContent = on === null ? "--" : on ? "ON" : "OFF";
+  brakeValueEl.classList.toggle("brake-on", on === true);
+}
 
 // Above brake, and sized like the speed and rpm gauges rather than a caption.
 const utilGauge = createUtilGauge("full", 32);
@@ -1001,7 +1013,7 @@ function clearLapView() {
   speedValueEl.textContent = "--";
   throttleValueEl.textContent = "--";
   rpmValueEl.textContent = "--";
-  brakeEl.classList.remove("active");
+  setBrake(null);
   updateGaugeSegs(speedSegTrack, 0, () => "");
   updateGaugeSegs(tpsSegTrack, 0, () => "");
   updateGaugeSegs(rpmSegTrack, 0, () => "");
@@ -1339,7 +1351,7 @@ function clearSeekDisplay() {
   updateGaugeSegs(tpsSegTrack, 0, () => "");
   rpmValueEl.textContent = "--";
   updateGaugeSegs(rpmSegTrack, 0, () => "");
-  brakeEl.classList.remove("active");
+  setBrake(null);
 }
 
 function updateSeek(idx: number) {
@@ -1393,7 +1405,7 @@ function updateSeek(idx: number) {
   updateGaugeSegs(rpmSegTrack, Math.min(1, rpmVal / MAX_RPM), (i, n) => rpmToColor((i + 1) / n));
 
   // Brake
-  brakeEl.classList.toggle("active", (lapBrakes[idx] ?? 0) > 0.5);
+  setBrake((lapBrakes[idx] ?? 0) > 0.5);
 }
 
 seekEl.addEventListener("input", () => {
