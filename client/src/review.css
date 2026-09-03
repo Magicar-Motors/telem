@@ -380,7 +380,6 @@
   justify-content: center;
   /* Centred when there is room; on a short viewport falls back to start, so
      the clip below takes the bottom rather than both ends. */
-  justify-content: safe center;
   gap: 8px;
   min-width: 120px;
   min-height: 0;
@@ -397,15 +396,20 @@
 .review-gauge {
   display: grid;
   grid-template-columns: auto 1fr;
+  grid-template-rows: auto 1fr;
   align-items: baseline;
   column-gap: 10px;
   row-gap: 3px;
+  /* Share the row height rather than sitting centred in it — the bars grow
+     into the space instead of leaving it empty above and below. */
+  flex: 1 1 0;
+  min-height: 0;
 }
 
 .review-gauge-label { grid-row: 1; grid-column: 1; }
 .review-gauge-header { grid-row: 1; grid-column: 2; }
 .review-gauge > .review-seg-track,
-.review-gauge > .review-brake { grid-row: 2; grid-column: 1 / -1; }
+.review-gauge > .review-brake { grid-row: 2; grid-column: 1 / -1; align-self: stretch; }
 
 .review-gauge-header {
   display: flex;
@@ -439,7 +443,8 @@
 .review-brake {
   display: flex;
   gap: 3px;
-  height: 10px;
+  min-height: 10px;
+  max-height: 22px;
   transform: skewX(-12deg);
   padding: 0 4px;
 }
@@ -460,7 +465,8 @@
 .review-seg-track {
   display: flex;
   gap: 2px;
-  height: 12px;
+  min-height: 12px;
+  max-height: 26px;
   transform: skewX(-12deg);
 }
 
