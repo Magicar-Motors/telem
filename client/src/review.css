@@ -340,13 +340,13 @@
    panel and shrinks the map instead of overflowing into the scrubber. */
 #review-telem {
   flex: 0 0 auto;
-  max-height: 62%;
+  max-height: 50%;
   background: var(--panel-bg);
   border-top: 1px solid var(--border);
   display: flex;
   flex-direction: column;
-  padding: 12px 16px;
-  gap: 8px;
+  padding: 10px 16px;
+  gap: 6px;
 }
 
 #review-telem-main {
@@ -378,7 +378,7 @@
   /* Centred when there is room; on a short viewport falls back to start, so
      the clip below takes the bottom rather than both ends. */
   justify-content: safe center;
-  gap: 12px;
+  gap: 6px;
   min-width: 120px;
   min-height: 0;
   overflow: hidden;
@@ -387,7 +387,7 @@
 .review-gauge {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 4px;
 }
 
 .review-gauge-header {
@@ -405,7 +405,7 @@
 }
 
 .review-gauge-value {
-  font-size: 32px;
+  font-size: 24px;
   font-weight: 700;
   color: #fff;
   line-height: 1;
@@ -443,7 +443,7 @@
 .review-seg-track {
   display: flex;
   gap: 2px;
-  height: 16px;
+  height: 14px;
   transform: skewX(-12deg);
 }
 

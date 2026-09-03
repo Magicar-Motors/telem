@@ -85,20 +85,31 @@
   color: var(--amber);
 }
 
-/* Review column: match the speed/rpm gauges beside it — value under the
-   label in large type, full-height segments. */
+/* Review column: match the speed/rpm gauges beside it, but put the caption
+   beside the value rather than under the bar — a whole line back, and the
+   column is far wider than the number needs. */
 .util-gauge.full {
-  gap: 6px;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  grid-template-areas:
+    "label label"
+    "value foot"
+    "track track";
+  gap: 4px 10px;
+  align-items: baseline;
 }
 
 .util-gauge.full .util-gauge-head {
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 6px;
+  display: contents;
+}
+
+.util-gauge.full .util-gauge-label {
+  grid-area: label;
 }
 
 .util-gauge.full .util-gauge-value {
-  font-size: 32px;
+  grid-area: value;
+  font-size: 24px;
   text-shadow: 0 0 10px rgba(255, 255, 255, 0.2);
 }
 
@@ -106,8 +117,16 @@
   font-size: 11px;
 }
 
+.util-gauge.full .util-gauge-foot {
+  grid-area: foot;
+  text-align: right;
+  white-space: nowrap;
+}
+
 .util-gauge.full .util-gauge-track {
-  height: 16px;
+  grid-area: track;
+  align-self: stretch;
+  height: 14px;
 }
 
 .util-gauge.full .util-gauge-seg {
