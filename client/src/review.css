@@ -6,6 +6,9 @@
   /* Fixed column for the number, so values start on the same x and the
      labels after them line up too. Wide enough for "4066 RPM". */
   --gauge-value-w: 108px;
+  /* Height of the number line. Brake has no number but reserves it anyway, so
+     its label and bar sit level with the gauges above. */
+  --gauge-value-h: 26px;
 }
 
 /* ── Body ── */
@@ -383,7 +386,7 @@
   /* Centred when there is room; on a short viewport falls back to start, so
      the clip below takes the bottom rather than both ends. */
   justify-content: safe center;
-  gap: 12px;
+  gap: 16px;
   min-width: 120px;
   min-height: 0;
   /* The bars are skewX(-12deg), so each one's top left corner sits outside its
@@ -415,6 +418,7 @@
   display: flex;
   align-items: baseline;
   gap: 6px;
+  min-height: var(--gauge-value-h);
 }
 
 .review-gauge-label {
@@ -427,7 +431,7 @@
 }
 
 .review-gauge-value {
-  font-size: 26px;
+  font-size: var(--gauge-value-h);
   font-weight: 700;
   color: #fff;
   line-height: 1;
@@ -457,10 +461,6 @@
   box-shadow: 0 0 8px rgba(255, 68, 54, 0.35);
 }
 
-.review-gauge-value.brake-on {
-  color: var(--red);
-  text-shadow: 0 0 10px rgba(255, 68, 54, 0.3);
-}
 
 .review-seg-track {
   display: flex;

@@ -428,18 +428,17 @@ const brakeWrap = document.createElement("div");
 brakeWrap.className = "review-gauge";
 // One bar, not ten segments: brake is a switch, and gradations implied a
 // pedal position the sensor does not measure.
+// Empty header, but it still reserves the number line so brake's label and
+// bar sit level with the gauges above.
 brakeWrap.innerHTML =
-  `<div class="review-gauge-header"><span class="review-gauge-value" id="rv-brake-value">--</span></div>` +
+  `<div class="review-gauge-header"></div>` +
   `<div class="review-gauge-label">制動 BRAKE</div>` +
   `<div class="review-brake" id="rv-brake"></div>`;
 gaugesEl.appendChild(brakeWrap);
 const brakeEl = brakeWrap.querySelector("#rv-brake")!;
-const brakeValueEl = brakeWrap.querySelector("#rv-brake-value")!;
 
 function setBrake(on: boolean | null): void {
   brakeEl.classList.toggle("active", on === true);
-  brakeValueEl.textContent = on === null ? "--" : on ? "ON" : "OFF";
-  brakeValueEl.classList.toggle("brake-on", on === true);
 }
 
 // Above brake, and sized like the speed and rpm gauges rather than a caption.
