@@ -1,5 +1,7 @@
 import * as http from "node:http";
 import { execSync } from "node:child_process";
+import { readFileSync, readdirSync, realpathSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { pack } from "msgpackr";
 import { WalEngine, WalEntry } from "./wal.js";
 import { SessionStore, type Lap } from "./sessions.js";
@@ -499,16 +501,53 @@ function handleServiceRestart(svc: string, password?: string): Record<string, un
 
 // --- Camera controls (v4l2-ctl) ---
 
+// Which camera these controls drive, by role name in streaming/cameras.conf.
+// The exposure knobs are for the forward camera; the others are along for the
+// ride. Matching on a model string instead would be ambiguous — the car runs
+// two identical C920x.
+const CAM_CONTROL_ROLE = process.env.CAM_CONTROL_ROLE || "forward";
+const CAMERA_CONFIG = process.env.CAMERA_CONFIG
+  || fileURLToPath(new URL("../../streaming/cameras.conf", import.meta.url));
+
 let camDevice: string | null = null;
+
+// The glob in the role's config row, matched the same way start_streaming.sh
+// matches it, so both halves agree on which camera is which.
+function camSelector(): string | null {
+  try {
+    for (const line of readFileSync(CAMERA_CONFIG, "utf-8").split("\n")) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith("#")) continue;
+      const [role, , selector] = trimmed.split("|");
+      if (role === CAM_CONTROL_ROLE && selector) return selector;
+    }
+  } catch {}
+  return null;
+}
 
 function findCamDevice(): string | null {
   if (camDevice) return camDevice;
+  const selector = camSelector();
+  if (!selector) return null;
+  // Every name the device answers to: its stable by-path/by-id symlinks plus
+  // the /dev/videoN path. A shell glob keeps the selector syntax identical to
+  // the one start_streaming.sh applies.
   try {
     const devs = execSync("ls /dev/video* 2>/dev/null", { encoding: "utf-8" }).trim().split("\n");
     for (const dev of devs) {
+      if (!dev) continue;
       try {
         const info = execSync(`v4l2-ctl -d ${dev} --all 2>/dev/null`, { encoding: "utf-8" });
-        if (info.includes("C930e")) {
+        if (!info.includes("Format Video Capture:")) continue;
+        const aliases = [dev];
+        for (const dir of ["/dev/v4l/by-path", "/dev/v4l/by-id"]) {
+          try {
+            for (const entry of readdirSync(dir)) {
+              if (realpathSync(`${dir}/${entry}`) === dev) aliases.push(entry);
+            }
+          } catch {}
+        }
+        if (aliases.some((alias) => matchesGlob(alias, selector))) {
           camDevice = dev;
           return dev;
         }
@@ -516,6 +555,11 @@ function findCamDevice(): string | null {
     }
   } catch {}
   return null;
+}
+
+function matchesGlob(value: string, glob: string): boolean {
+  const pattern = glob.split("*").map((part) => part.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join(".*");
+  return new RegExp(`^${pattern}$`).test(value);
 }
 
 function getCamCtrl(dev: string, ctrl: string): number {

@@ -1,13 +1,16 @@
 #!/usr/bin/env bash
-# Serve all webcams + audio from the Jetson over SRT (MPEG-TS). The Jetson
+# Serve the car's cameras + mic from the Jetson over SRT (MPEG-TS). The Jetson
 # listens and OBS dials in, so nothing here needs to know the viewer's address.
-# Ports: 9000, 9001 for video (max 2 cameras), 9002 for audio
+#
+# Which camera lands on which port comes from cameras.conf, keyed on the stable
+# /dev/v4l/by-path (or by-id) name rather than USB enumeration order. Audio is
+# fixed at 9002.
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+CONFIG="${CAMERA_CONFIG:-${SCRIPT_DIR}/cameras.conf}"
 BIND_ADDR=0.0.0.0
-BASE_PORT=9000
 AUDIO_PORT=9002
-MAX_VIDEO_STREAMS=2
 # SRT recovers loss by retransmission, which costs a full round trip. Trackside
 # cellular measures ~160ms median RTT (220ms peaks), so a budget below that
 # leaves every retransmit arriving after its deadline — the decoder keeps the
@@ -15,7 +18,12 @@ MAX_VIDEO_STREAMS=2
 # RTT; Haivision's guidance is 4x.
 SRT_LATENCY=800
 
-# Find all video capture devices (skip metadata/control nodes)
+[ -r "$CONFIG" ] || { echo "No camera config at ${CONFIG}"; exit 1; }
+
+# --- What's actually plugged in -----------------------------------------------
+
+# Video capture devices only; every camera also exposes a metadata node that
+# answers to v4l2-ctl but has nothing to stream.
 DEVICES=()
 for dev in /dev/video*; do
   [ -e "$dev" ] || continue
@@ -29,100 +37,160 @@ if [ ${#DEVICES[@]} -eq 0 ]; then
   exit 1
 fi
 
-echo "Found ${#DEVICES[@]} camera(s): ${DEVICES[*]}"
+# Every name a device answers to: its by-path and by-id symlinks plus the
+# /dev/videoN path itself, so a selector can be any of the three.
+declare -A ALIASES=()
+for dev in "${DEVICES[@]}"; do
+  ALIASES["$dev"]="$dev"
+done
+for link in /dev/v4l/by-path/* /dev/v4l/by-id/*; do
+  [ -e "$link" ] || continue
+  target="$(readlink -f "$link")"
+  [ -n "${ALIASES[$target]:-}" ] || continue
+  ALIASES["$target"]+=" $(basename "$link")"
+done
 
-# Detect best MJPEG resolution for a device (must be under MJPG section)
-detect_res() {
-  local dev="$1"
-  local formats
-  formats=$(v4l2-ctl -d "$dev" --list-formats-ext 2>/dev/null)
+echo "Found ${#DEVICES[@]} capture device(s): ${DEVICES[*]}"
 
-  # Extract only the MJPG section
-  local mjpg_section
-  mjpg_section=$(echo "$formats" | sed -n '/MJPG/,/^\[/p')
-
-  if [ -z "$mjpg_section" ]; then
-    echo "none"
-    return
-  fi
-
-  for res in 1920x1080 1280x720 640x480; do
-    if echo "$mjpg_section" | grep -q "${res}"; then
-      echo "$res"
-      return
-    fi
+# First unclaimed device answering to $1, into $RESOLVED_DEV (empty if none).
+# Claiming keeps two rows with overlapping globs from both grabbing the same
+# camera. Returned by variable, not stdout: a command substitution would run
+# this in a subshell and throw the claim away.
+CLAIMED=()
+RESOLVED_DEV=""
+resolve_device() {
+  local selector="$1" dev alias claimed
+  RESOLVED_DEV=""
+  for dev in "${DEVICES[@]}"; do
+    for claimed in ${CLAIMED[@]+"${CLAIMED[@]}"}; do
+      [ "$claimed" = "$dev" ] && continue 2
+    done
+    for alias in ${ALIASES["$dev"]}; do
+      # shellcheck disable=SC2254 # selector is a glob on purpose
+      case "$alias" in
+        $selector) CLAIMED+=("$dev"); RESOLVED_DEV="$dev"; return ;;
+      esac
+    done
   done
-
-  echo "none"
 }
 
-# Find C930e device and ensure it's first (always port 9000)
-C930E_DEV=""
-OTHER_DEVS=()
-for dev in "${DEVICES[@]}"; do
-  if [ -z "$C930E_DEV" ] && v4l2-ctl -d "$dev" --all 2>/dev/null | grep -q "C930e"; then
-    C930E_DEV="$dev"
+# The camera must offer the requested resolution as MJPEG — that's the only
+# format the pipeline below decodes.
+has_mjpeg_res() {
+  local dev="$1" res="$2"
+  v4l2-ctl -d "$dev" --list-formats-ext 2>/dev/null \
+    | sed -n '/MJPG/,/^\[/p' | grep -q "$res"
+}
+
+# --- Read the config ----------------------------------------------------------
+
+ROLES=() PORTS=() SELECTORS=() RESES=() FLIPS=() BITRATES=() OVERLAYS=() CONTROLS=()
+while IFS='|' read -r role port selector res flip bitrate overlay controls; do
+  case "${role# }" in ''|'#'*) continue ;; esac
+  ROLES+=("$role") PORTS+=("$port") SELECTORS+=("$selector") RESES+=("$res")
+  FLIPS+=("$flip") BITRATES+=("$bitrate") OVERLAYS+=("$overlay") CONTROLS+=("${controls:-}")
+done < "$CONFIG"
+
+[ ${#ROLES[@]} -gt 0 ] || { echo "No camera rows in ${CONFIG}"; exit 1; }
+
+# Resolve every row up front so the mapping can be logged as one table, and so
+# a config that matches nothing is caught before any pipeline starts.
+RESOLVED=()
+MATCHES=0
+for i in "${!ROLES[@]}"; do
+  resolve_device "${SELECTORS[$i]}"
+  RESOLVED+=("$RESOLVED_DEV")
+  [ -n "$RESOLVED_DEV" ] && MATCHES=$((MATCHES + 1))
+done
+
+# A config whose selectors are all stale would take the whole broadcast down,
+# which is the wrong failure at a track. Fall back to enumeration order — the
+# old behaviour, wrong-camera-shaped but live — and make the reason obvious.
+if [ "$MATCHES" -eq 0 ]; then
+  echo "WARNING: no camera in ${CONFIG} matched a connected device."
+  echo "WARNING: falling back to /dev/video* enumeration order — the streams may"
+  echo "WARNING: be in any order. Fix the selectors with ./detect_cameras.sh."
+  RESOLVED=()
+  for i in "${!ROLES[@]}"; do
+    RESOLVED+=("${DEVICES[$i]:-}")
+  done
+fi
+
+echo
+echo "role       port  device       source"
+for i in "${!ROLES[@]}"; do
+  dev="${RESOLVED[$i]}"
+  if [ -n "$dev" ]; then
+    printf '%-10s %-5s %-12s %s\n' "${ROLES[$i]}" "${PORTS[$i]}" "$dev" "${SELECTORS[$i]}"
   else
-    OTHER_DEVS+=("$dev")
+    printf '%-10s %-5s %-12s %s\n' "${ROLES[$i]}" "${PORTS[$i]}" "(missing)" "${SELECTORS[$i]}"
   fi
 done
 
-if [ -n "$C930E_DEV" ]; then
-  DEVICES=("$C930E_DEV" "${OTHER_DEVS[@]}")
-  echo "C930e at ${C930E_DEV} → pinned to port ${BASE_PORT}"
-fi
+# Anything plugged in that no row wants is almost always a mis-plug.
+for dev in "${DEVICES[@]}"; do
+  for claimed in ${RESOLVED[@]+"${RESOLVED[@]}"}; do
+    [ "$claimed" = "$dev" ] && continue 2
+  done
+  echo "WARNING: ${dev} matches no role in ${CONFIG} and will not be streamed"
+  echo "WARNING:   aliases: ${ALIASES[$dev]}"
+done
+echo
+
+# --- Launch -------------------------------------------------------------------
 
 PIDS=()
-STREAM_COUNT=0
-for i in "${!DEVICES[@]}"; do
-  if [ "$STREAM_COUNT" -ge "$MAX_VIDEO_STREAMS" ]; then
-    echo "Reached max video streams ($MAX_VIDEO_STREAMS), skipping remaining cameras"
-    break
-  fi
+STARTED=()
+for i in "${!ROLES[@]}"; do
+  dev="${RESOLVED[$i]}"
+  role="${ROLES[$i]}"
 
-  dev="${DEVICES[$i]}"
-  port=$((BASE_PORT + STREAM_COUNT))
-
-  res=$(detect_res "$dev")
-  if [ "$res" = "none" ]; then
-    echo "Skipping ${dev}: no MJPEG support"
+  if [ -z "$dev" ]; then
+    echo "Skipping ${role}: no device matched '${SELECTORS[$i]}' — port ${PORTS[$i]} stays dark"
     continue
   fi
 
-  # Secondary cameras capped to 720p
-  if [ "$STREAM_COUNT" -gt 0 ]; then
-    res="1280x720"
+  res="${RESES[$i]}"
+  if ! has_mjpeg_res "$dev" "$res"; then
+    echo "Skipping ${role} (${dev}): no MJPEG ${res} — port ${PORTS[$i]} stays dark"
+    continue
   fi
 
   w=${res%x*}
   h=${res#*x}
+  bitrate="${BITRATES[$i]}"
+  peak=$((bitrate * 5 / 4))
 
-  if [ "$STREAM_COUNT" -eq 0 ]; then
-    # First stream: video only (with clock overlay)
-    echo "Serving ${dev} (MJPEG ${res}) → srt://${BIND_ADDR}:${port} (listener) ..."
-    gst-launch-1.0 \
-      v4l2src device="${dev}" \
-      ! "image/jpeg,width=${w},height=${h},framerate=30/1" \
-      ! jpegdec \
-      ! clockoverlay time-format="%Y-%m-%d %H:%M:%S %Z" halignment=left valignment=bottom font-desc="monospace 6" shaded-background=true \
-      ! nvvidconv ! 'video/x-raw(memory:NVMM)' \
-      ! nvv4l2h264enc maxperf-enable=true ratecontrol-enable=true EnableTwopassCBR=false peak-bitrate=3000000 bitrate=2500000 iframeinterval=15 insert-sps-pps=true \
-      ! h264parse ! queue max-size-time=200000000 leaky=downstream ! mpegtsmux alignment=7 \
-      ! srtsink uri="srt://${BIND_ADDR}:${port}?mode=listener" latency=${SRT_LATENCY} sync=false &
-  else
-    # Subsequent streams: video only
-    echo "Serving ${dev} (MJPEG ${res}) → srt://${BIND_ADDR}:${port} (listener) ..."
-    gst-launch-1.0 \
-      v4l2src device="${dev}" \
-      ! "image/jpeg,width=${w},height=${h},framerate=30/1" \
-      ! jpegdec ! nvvidconv flip-method=2 ! 'video/x-raw(memory:NVMM)' \
-      ! nvv4l2h264enc maxperf-enable=true ratecontrol-enable=true EnableTwopassCBR=false peak-bitrate=1500000 bitrate=1200000 iframeinterval=15 insert-sps-pps=true \
-      ! h264parse ! queue max-size-time=200000000 leaky=downstream ! mpegtsmux alignment=7 \
-      ! srtsink uri="srt://${BIND_ADDR}:${port}?mode=listener" latency=${SRT_LATENCY} sync=false &
+  # An array, so the properties that contain spaces survive as single words.
+  overlay=()
+  if [ "${OVERLAYS[$i]}" = "yes" ]; then
+    overlay=(
+      '!' clockoverlay
+      'time-format=%Y-%m-%d %H:%M:%S %Z'
+      halignment=left valignment=bottom
+      'font-desc=monospace 6'
+      shaded-background=true
+    )
   fi
+
+  echo "Serving ${role} on ${dev} (MJPEG ${res}) → srt://${BIND_ADDR}:${PORTS[$i]} (listener) ..."
+  gst-launch-1.0 \
+    v4l2src device="${dev}" \
+    ! "image/jpeg,width=${w},height=${h},framerate=30/1" \
+    ! jpegdec \
+    ${overlay[@]+"${overlay[@]}"} \
+    ! nvvidconv flip-method="${FLIPS[$i]}" ! 'video/x-raw(memory:NVMM)' \
+    ! nvv4l2h264enc maxperf-enable=true ratecontrol-enable=true EnableTwopassCBR=false peak-bitrate=${peak} bitrate=${bitrate} iframeinterval=15 insert-sps-pps=true \
+    ! h264parse ! queue max-size-time=200000000 leaky=downstream ! mpegtsmux alignment=7 \
+    ! srtsink uri="srt://${BIND_ADDR}:${PORTS[$i]}?mode=listener" latency=${SRT_LATENCY} sync=false &
   PIDS+=($!)
-  STREAM_COUNT=$((STREAM_COUNT + 1))
+  STARTED+=("$i")
 done
+
+if [ ${#STARTED[@]} -eq 0 ]; then
+  echo "No camera pipelines started"
+  exit 1
+fi
 
 # Audio-only stream on fixed port 9002
 echo "Serving audio (LavMicro-U) → srt://${BIND_ADDR}:${AUDIO_PORT} (listener) ..."
@@ -135,17 +203,23 @@ gst-launch-1.0 \
   ! srtsink uri="srt://${BIND_ADDR}:${AUDIO_PORT}?mode=listener" latency=${SRT_LATENCY} sync=false &
 PIDS+=($!)
 
-# Apply C930e settings after pipelines open the device
-if [ -n "$C930E_DEV" ]; then
-  (sleep 3 && v4l2-ctl -d "$C930E_DEV" \
-    --set-ctrl=zoom_absolute=100 \
-    --set-ctrl=exposure_auto=1 \
-    --set-ctrl=exposure_absolute=3 \
-    --set-ctrl=gain=32 \
-    --set-ctrl=backlight_compensation=0 \
-    --set-ctrl=brightness=128 \
-    && echo "Applied C930e settings") &
-fi
+# v4l2 controls only stick once a pipeline has the device open.
+for i in ${STARTED[@]+"${STARTED[@]}"}; do
+  [ -n "${CONTROLS[$i]}" ] || continue
+  (
+    sleep 3
+    args=()
+    IFS=';' read -ra ctrls <<< "${CONTROLS[$i]}"
+    for ctrl in "${ctrls[@]}"; do
+      [ -n "$ctrl" ] && args+=("--set-ctrl=${ctrl}")
+    done
+    if v4l2-ctl -d "${RESOLVED[$i]}" "${args[@]}"; then
+      echo "Applied ${ROLES[$i]} controls: ${CONTROLS[$i]}"
+    else
+      echo "WARNING: failed to apply ${ROLES[$i]} controls"
+    fi
+  ) &
+done
 
 echo "All streams listening, waiting for OBS to connect. PIDs: ${PIDS[*]}"
 echo "Press Ctrl+C to stop all."

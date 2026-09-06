@@ -1,9 +1,13 @@
 # OBS setup
 
-The receiving half of the stream: three SRT callers that dial the Jetson's
+The receiving half of the stream: four SRT callers that dial the Jetson's
 cameras and mic, plus the browser overlays. Committed so it survives a machine
 rebuild and so a second person can run the broadcast without rebuilding scenes
 by hand.
+
+Sources are named for the roles in `../cameras.conf`, not "Camera 1/2/3" — the
+whole point of that file is that a given port is always the same camera, so the
+source may as well say which one.
 
 ```bash
 ./sync.sh import     # repo -> OBS  (quit OBS first, it rewrites config on exit)
@@ -31,14 +35,19 @@ alongside what it already has.
 
 | Source | What it is |
 |---|---|
-| Camera 1 | SRT caller → `gearados-nx:9000` — C930e, always this port |
-| Camera 2 | SRT caller → `gearados-nx:9001` |
+| Forward | SRT caller → `gearados-nx:9000` |
+| Driver | SRT caller → `gearados-nx:9001` |
 | Engine Mic | SRT caller → `gearados-nx:9002`, `mpegts` input format |
+| Rear | SRT caller → `gearados-nx:9003` |
 | Map / Lap times / Car Data | Browser overlays from the Vite dev server |
 | Audio Input Capture / Discord | Local commentary audio |
 
 Stream settings live in `profile/basic.ini`: 1920x1080 base scaled to 720p30,
 6 Mbps via `apple_h264`. Recording paths use a `__HOME__` placeholder that
 `sync.sh` swaps for the importing machine's home directory.
+
+Adding a camera means a row in `../cameras.conf` **and** a source here on the
+same port. `Rear` ships stacked above `Driver` in the corner — a starting
+position, not a considered layout; move it and `./sync.sh export`.
 
 See the root README for the Jetson side and the SRT latency units gotcha.

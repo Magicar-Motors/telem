@@ -105,8 +105,9 @@ fonts/            Berkeley Mono
 
 | Telemetry Point | Sense Strategy | Signal Type | Arduino Pin | Sense Line |
 |---|---|---|---|---|
-| Video 1 | Camera | USB | — | — |
-| Video 2 | Camera | USB | — | — |
+| Video 1 | Camera (forward) | USB | — | — |
+| Video 2 | Camera (driver) | USB | — | — |
+| Video 3 | Camera (rear) | USB | — | — |
 | Car Audio | Microphone | USB | — | — |
 | Brake Indicator | Binary yes/no voltage | 12V divided down 4.3× | A5 | White/Green brake light line |
 | Battery Voltage | Analog | 12V divided down 4.3× | A6 | Tap off PDB +12V bus |
@@ -195,7 +196,27 @@ GStreamer pipelines on the Jetson, SRT over Tailscale:
 - **Video**: `v4l2src → jpegdec → nvvidconv → nvv4l2h264enc (4Mbps, GOP 15) → MPEG-TS → SRT`
 - **Audio**: `alsasrc (40ms buffer) → Opus (64kbps, 10ms frames) → MPEG-TS → SRT`
 - **SRT latency**: 100ms (tuned for ~150ms Tailscale RTT)
-- C930e always pinned to port 9000 regardless of USB enumeration
+
+### Which camera is which
+
+`streaming/cameras.conf` maps each camera to a role, a fixed SRT port, and its
+own resolution/flip/bitrate. Cameras are matched on their `/dev/v4l/by-path`
+name — the physical USB port — not on `/dev/videoN`, which is handed out in
+enumeration order and so changes when you add, move, or lose a camera.
+
+Because the port belongs to the role, a camera that is unplugged or fails to
+open leaves its port dark instead of promoting the next camera into it. Camera
+settings travel with the camera too, so nothing silently ends up upside down
+after a re-plug.
+
+Run `streaming/detect_cameras.sh` on the Jetson after any wiring change: it
+lists what's connected and prints a paste-ready config line per camera. If no
+selector matches anything, `start_streaming.sh` falls back to the old
+enumeration order and says so loudly, rather than taking the broadcast down.
+
+`server/src/http.ts` reads the same file to find the camera behind
+`/cam/exposure`; set `CAM_CONTROL_ROLE` to point those controls at a role other
+than `forward`.
 
 ### Connecting OBS
 
@@ -206,9 +227,14 @@ Add one Media Source per stream, uncheck **Local File**, and set **Input**:
 
 | Source | Input | Input Format |
 |---|---|---|
-| Camera 1 | `srt://gearados-nx:9000?mode=caller&latency=50000` | |
-| Camera 2 | `srt://gearados-nx:9001?mode=caller&latency=50000` | |
+| Forward | `srt://gearados-nx:9000?mode=caller&latency=50000` | |
+| Driver | `srt://gearados-nx:9001?mode=caller&latency=50000` | |
 | Engine Mic | `srt://gearados-nx:9002?mode=caller` | `mpegts` |
+| Rear | `srt://gearados-nx:9003?mode=caller&latency=50000` | |
+
+Ports come from `streaming/cameras.conf` — add a role there and it needs a
+matching source here. `streaming/test_streams.sh` previews them all without
+OBS, labelling each window with its role.
 
 Set **Reconnect Delay** to 1s and **Buffering** to 0 MB on each, so a dropped
 stream comes back on its own without buying that back in latency.

@@ -36,7 +36,7 @@
     "sources": [
         {
             "prev_ver": 537001986,
-            "name": "Camera 1",
+            "name": "Forward",
             "uuid": "1da743f7-64d6-48b0-92cb-2055325ae418",
             "id": "ffmpeg_source",
             "versioned_id": "ffmpeg_source",
@@ -77,12 +77,53 @@
         },
         {
             "prev_ver": 537001986,
-            "name": "Camera 2",
+            "name": "Driver",
             "uuid": "2df44771-bed5-41e4-9f0c-9e1a820293d3",
             "id": "ffmpeg_source",
             "versioned_id": "ffmpeg_source",
             "settings": {
                 "input": "srt://gearados-nx:9001?mode=caller&latency=800000",
+                "ffmpeg_options": "probesize=100000 analyzeduration=500000",
+                "is_local_file": false,
+                "reconnect_delay_sec": 1,
+                "buffering_mb": 1
+            },
+            "mixers": 255,
+            "sync": 0,
+            "flags": 0,
+            "volume": 1.6638810848235153e-05,
+            "balance": 0.5,
+            "enabled": true,
+            "muted": false,
+            "push-to-mute": false,
+            "push-to-mute-delay": 0,
+            "push-to-talk": false,
+            "push-to-talk-delay": 0,
+            "hotkeys": {
+                "libobs.mute": [],
+                "libobs.unmute": [],
+                "libobs.push-to-mute": [],
+                "libobs.push-to-talk": [],
+                "MediaSource.Restart": [],
+                "MediaSource.Play": [],
+                "MediaSource.Pause": [],
+                "MediaSource.Stop": []
+            },
+            "deinterlace_mode": 0,
+            "deinterlace_field_order": 0,
+            "monitoring_type": 0,
+            "private_settings": {
+                "mixer_hidden": true
+            }
+        },
+        {
+            "prev_ver": 537001986,
+            "name": "Rear",
+            "uuid": "906ce781-bd31-46d6-a050-19310d6617a3",
+            "id": "ffmpeg_source",
+            "versioned_id": "ffmpeg_source",
+            "settings": {
+                "input": "srt://gearados-nx:9003?mode=caller&latency=800000",
                 "ffmpeg_options": "probesize=100000 analyzeduration=500000",
                 "is_local_file": false,
                 "reconnect_delay_sec": 1,
@@ -500,7 +541,7 @@
                         "private_settings": {}
                     },
                     {
-                        "name": "Camera 1",
+                        "name": "Forward",
                         "source_uuid": "1da743f7-64d6-48b0-92cb-2055325ae418",
                         "visible": true,
                         "locked": false,
@@ -555,7 +596,7 @@
                         "private_settings": {}
                     },
                     {
-                        "name": "Camera 2",
+                        "name": "Driver",
                         "source_uuid": "2df44771-bed5-41e4-9f0c-9e1a820293d3",
                         "visible": true,
                         "locked": false,
@@ -581,6 +622,61 @@
                         "pos_rel": {
                             "x": 0.9740740656852722,
                             "y": 0.5444444417953491
+                        },
+                        "scale": {
+                            "x": 0.33906251192092896,
+                            "y": 0.3412037789821625
+                        },
+                        "scale_rel": {
+                            "x": 0.33906251192092896,
+                            "y": 0.3412037789821625
+                        },
+                        "bounds": {
+                            "x": 0.0,
+                            "y": 0.0
+                        },
+                        "bounds_rel": {
+                            "x": 0.0,
+                            "y": 0.0
+                        },
+                        "scale_filter": "disable",
+                        "blend_method": "default",
+                        "blend_type": "normal",
+                        "show_transition": {
+                            "duration": 0
+                        },
+                        "hide_transition": {
+                            "duration": 0
+                        },
+                        "private_settings": {}
+                    },
+                    {
+                        "name": "Rear",
+                        "source_uuid": "906ce781-bd31-46d6-a050-19310d6617a3",
+                        "visible": true,
+                        "locked": false,
+                        "rot": 0.0,
+                        "scale_ref": {
+                            "x": 1920.0,
+                            "y": 1080.0
+                        },
+                        "align": 5,
+                        "bounds_type": 0,
+                        "bounds_align": 0,
+                        "bounds_crop": false,
+                        "crop_left": 0,
+                        "crop_top": 0,
+                        "crop_right": 0,
+                        "crop_bottom": 0,
+                        "id": 32,
+                        "group_item_backup": false,
+                        "pos": {
+                            "x": 1486.0,
+                            "y": 454.0
+                        },
+                        "pos_rel": {
+                            "x": 0.9740740656852722,
+                            "y": 0.29637623090538184
                         },
                         "scale": {
                             "x": 0.33906251192092896,
