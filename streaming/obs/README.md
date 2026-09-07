@@ -1,4 +1,9 @@
-# OBS setup
+# OBS setup — Mac
+
+The Mac's copy of the broadcast config. The T14s keeps its own in
+[`../obs-linux-t14s`](../obs-linux-t14s/) — the profile pins a per-platform
+encoder and OBS stores its config elsewhere under Flatpak, so the two can't
+share one export. `sync.sh` here is the script both directories use.
 
 The receiving half of the stream: four SRT callers that dial the Jetson's
 cameras and mic, plus the browser overlays. Committed so it survives a machine

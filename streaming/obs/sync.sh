@@ -8,7 +8,7 @@
 set -euo pipefail
 
 OBS_DIR="${OBS_DIR:-$HOME/Library/Application Support/obs-studio}"
-REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_DIR="${REPO_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)}"
 COLLECTION="${COLLECTION:-telem}"
 PROFILE="${PROFILE:-telem}"
 
@@ -28,7 +28,8 @@ case "$1" in
       < "$OBS_DIR/basic/profiles/${PROFILE}/basic.ini" \
       | grep -v '^CookieId=' > "$REPO_DIR/profile/basic.ini"
 
-    python3 - "$OBS_DIR/basic/profiles/${PROFILE}/service.json" "$REPO_DIR/profile/service.json" <<'PY'
+    if [ -f "$OBS_DIR/basic/profiles/${PROFILE}/service.json" ]; then
+      python3 - "$OBS_DIR/basic/profiles/${PROFILE}/service.json" "$REPO_DIR/profile/service.json" <<'PY'
 import json, sys
 d = json.load(open(sys.argv[1]))
 for k in ("key", "stream_key_link"):
@@ -36,11 +37,17 @@ for k in ("key", "stream_key_link"):
         d["settings"][k] = ""
 json.dump(d, open(sys.argv[2], "w"), indent=4)
 PY
+    else
+      echo "No service.json in profile '${PROFILE}' — nothing has streamed from it yet, skipping"
+    fi
     echo "Exported to ${REPO_DIR} (stream key stripped)"
     ;;
 
   import)
-    pgrep -x OBS >/dev/null && { echo "Quit OBS first — it overwrites its config on exit" >&2; exit 1; }
+    # Linux names the process "obs", macOS "OBS".
+    if pgrep -x OBS >/dev/null || pgrep -x obs >/dev/null; then
+      echo "Quit OBS first — it overwrites its config on exit" >&2; exit 1
+    fi
 
     mkdir -p "$OBS_DIR/basic/scenes" "$OBS_DIR/basic/profiles/${PROFILE}"
     for f in "$OBS_DIR/basic/scenes/${COLLECTION}.json" \
@@ -52,7 +59,8 @@ PY
     cp "$REPO_DIR/scene-collection.json" "$OBS_DIR/basic/scenes/${COLLECTION}.json"
     sub_home "__HOME__" "$HOME" \
       < "$REPO_DIR/profile/basic.ini" > "$OBS_DIR/basic/profiles/${PROFILE}/basic.ini"
-    cp "$REPO_DIR/profile/service.json" "$OBS_DIR/basic/profiles/${PROFILE}/service.json"
+    [ -f "$REPO_DIR/profile/service.json" ] &&
+      cp "$REPO_DIR/profile/service.json" "$OBS_DIR/basic/profiles/${PROFILE}/service.json"
 
     echo "Imported. Existing config saved as *.bak"
     echo "Open OBS → Scene Collection → ${COLLECTION}, Profile → ${PROFILE}, then paste your Twitch key."
