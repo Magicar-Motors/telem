@@ -181,7 +181,13 @@ function init() {
 let entryCount = 0;
 let lastRateCheck = performance.now();
 
+let lastDiagnosticsUpdate = 0;
+
 function loop() {
+  if (mgr.dirty || performance.now() - lastDiagnosticsUpdate > 500) {
+    diag.update();
+    lastDiagnosticsUpdate = performance.now();
+  }
   if (mgr.dirty) {
     for (const p of panels) p.update();
     maps.update();
@@ -192,7 +198,6 @@ function loop() {
       muY: su.envelope.muY, muX: su.envelope.muX,
       mode: su.envelope.mode, sampleCount: su.sampleCount,
     });
-    diag.update();
     lapTimes.update();
 
     // update stats
