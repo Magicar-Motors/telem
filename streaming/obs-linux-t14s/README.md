@@ -33,8 +33,8 @@ Import backs up whatever is already there as `*.bak`, then you pick
 
 | Source | What it is |
 |---|---|
-| c1 | SRT caller → `gearados-nx:9000` — C930e, always this port |
-| rear view | SRT caller → `gearados-nx:9001` |
+| Pedal View | SRT caller → `gearados-nx:9000` |
+| Driver | SRT caller → `gearados-nx:9001` |
 | Mic | SRT caller → `gearados-nx:9002` |
 | Map / Car Data / lapdata | Browser overlays from the Vite dev server |
 

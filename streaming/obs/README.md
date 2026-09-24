@@ -40,10 +40,10 @@ alongside what it already has.
 
 | Source | What it is |
 |---|---|
-| Forward | SRT caller → `gearados-nx:9000` |
+| Pedal View | SRT caller → `gearados-nx:9000` |
 | Driver | SRT caller → `gearados-nx:9001` |
 | Engine Mic | SRT caller → `gearados-nx:9002`, `mpegts` input format |
-| Rear | SRT caller → `gearados-nx:9003` |
+| Front | SRT caller → `gearados-nx:9003` |
 | Map / Lap times / Car Data | Browser overlays from the Vite dev server |
 | Audio Input Capture / Discord | Local commentary audio |
 
@@ -52,7 +52,7 @@ Stream settings live in `profile/basic.ini`: 1920x1080 base scaled to 720p30,
 `sync.sh` swaps for the importing machine's home directory.
 
 Adding a camera means a row in `../cameras.conf` **and** a source here on the
-same port. `Rear` ships stacked above `Driver` in the corner — a starting
+same port. `Front` ships stacked above `Driver` in the corner — a starting
 position, not a considered layout; move it and `./sync.sh export`.
 
 See the root README for the Jetson side and the SRT latency units gotcha.

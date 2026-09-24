@@ -7,7 +7,7 @@ Wants=telem-server.service
 Type=simple
 User=gearados
 WorkingDirectory=/home/gearados/repos/telem/server
-ExecStart=/bin/bash -c 'source /home/gearados/.nvm/nvm.sh && exec npx tsx scripts/serial-bridge.ts /dev/ttyACM0'
+ExecStart=/bin/bash -c 'source /home/gearados/.nvm/nvm.sh && exec npx tsx scripts/serial-bridge.ts /dev/serial/by-id/usb-Arduino_Srl_Arduino_Mega_95536333830351416141-if00'
 Environment=INGEST_URL=http://localhost:4400/ingest
 Restart=on-failure
 RestartSec=5

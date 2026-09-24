@@ -105,9 +105,9 @@ fonts/            Berkeley Mono
 
 | Telemetry Point | Sense Strategy | Signal Type | Arduino Pin | Sense Line |
 |---|---|---|---|---|
-| Video 1 | Camera (forward) | USB | — | — |
+| Video 1 | Camera (pedal) | USB | — | — |
 | Video 2 | Camera (driver) | USB | — | — |
-| Video 3 | Camera (rear) | USB | — | — |
+| Video 3 | Camera (front) | USB | — | — |
 | Car Audio | Microphone | USB | — | — |
 | Brake Indicator | Binary yes/no voltage | 12V divided down 4.3× | A5 | White/Green brake light line |
 | Battery Voltage | Analog | 12V divided down 4.3× | A6 | Tap off PDB +12V bus |
@@ -204,6 +204,10 @@ own resolution/flip/bitrate. Cameras are matched on their `/dev/v4l/by-path`
 name — the physical USB port — not on `/dev/videoN`, which is handed out in
 enumeration order and so changes when you add, move, or lose a camera.
 
+The current setup uses 640×480 for pedal and 1920×1080 for driver and front.
+All three at 1920×1080 failed during V4L2 buffer allocation on the shared USB
+2.0 hub; both 1080p streams in this mixed setup decoded at about 15 fps.
+
 Because the port belongs to the role, a camera that is unplugged or fails to
 open leaves its port dark instead of promoting the next camera into it. Camera
 settings travel with the camera too, so nothing silently ends up upside down
@@ -216,7 +220,7 @@ enumeration order and says so loudly, rather than taking the broadcast down.
 
 `server/src/http.ts` reads the same file to find the camera behind
 `/cam/exposure`; set `CAM_CONTROL_ROLE` to point those controls at a role other
-than `forward`.
+than `front`.
 
 ### Connecting OBS
 
@@ -227,10 +231,10 @@ Add one Media Source per stream, uncheck **Local File**, and set **Input**:
 
 | Source | Input | Input Format |
 |---|---|---|
-| Forward | `srt://gearados-nx:9000?mode=caller&latency=50000` | |
+| Pedal View | `srt://gearados-nx:9000?mode=caller&latency=50000` | |
 | Driver | `srt://gearados-nx:9001?mode=caller&latency=50000` | |
 | Engine Mic | `srt://gearados-nx:9002?mode=caller` | `mpegts` |
-| Rear | `srt://gearados-nx:9003?mode=caller&latency=50000` | |
+| Front | `srt://gearados-nx:9003?mode=caller&latency=50000` | |
 
 Ports come from `streaming/cameras.conf` — add a role there and it needs a
 matching source here. `streaming/test_streams.sh` previews them all without

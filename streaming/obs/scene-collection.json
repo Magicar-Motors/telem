@@ -36,7 +36,7 @@
     "sources": [
         {
             "prev_ver": 537001986,
-            "name": "Forward",
+            "name": "Pedal View",
             "uuid": "1da743f7-64d6-48b0-92cb-2055325ae418",
             "id": "ffmpeg_source",
             "versioned_id": "ffmpeg_source",
@@ -118,7 +118,7 @@
         },
         {
             "prev_ver": 537001986,
-            "name": "Rear",
+            "name": "Front",
             "uuid": "906ce781-bd31-46d6-a050-19310d6617a3",
             "id": "ffmpeg_source",
             "versioned_id": "ffmpeg_source",
@@ -541,7 +541,7 @@
                         "private_settings": {}
                     },
                     {
-                        "name": "Forward",
+                        "name": "Pedal View",
                         "source_uuid": "1da743f7-64d6-48b0-92cb-2055325ae418",
                         "visible": true,
                         "locked": false,
@@ -651,7 +651,7 @@
                         "private_settings": {}
                     },
                     {
-                        "name": "Rear",
+                        "name": "Front",
                         "source_uuid": "906ce781-bd31-46d6-a050-19310d6617a3",
                         "visible": true,
                         "locked": false,
