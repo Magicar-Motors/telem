@@ -584,6 +584,13 @@ function handleCamGetExposure(): Record<string, unknown> {
 // Exposure steps: raise/lower exposure_absolute and gain together
 // exposure_absolute: 3–2047, gain: 0–255
 const EXPOSURE_STEPS = [3, 5, 10, 20, 40, 80, 150, 250, 500, 1000, 2047];
+
+// exposure_auto: 1 = manual, 3 = aperture priority (the camera picks). A UVC
+// driver rejects a write to exposure_absolute while it is picking, so stepping
+// has to latch manual first — otherwise v4l2-ctl exits nonzero and the step is
+// lost. Only this role is touched (CAM_CONTROL_ROLE, default front); the pedal
+// cam is left on auto, which it needs — see streaming/cameras.conf.
+const EXPOSURE_MANUAL = 1;
 const GAIN_STEPS = [0, 32, 64, 96, 128, 160, 192, 224, 255];
 
 function stepValue(steps: number[], current: number, dir: number): number {
@@ -601,6 +608,13 @@ function handleCamAdjustExposure(dir: number): Record<string, unknown> {
   const dev = findCamDevice();
   if (!dev) return { error: "camera not found" };
   try {
+    if (getCamCtrl(dev, "exposure_auto") !== EXPOSURE_MANUAL) {
+      execSync(`v4l2-ctl -d ${dev} --set-ctrl=exposure_auto=${EXPOSURE_MANUAL}`);
+    }
+
+    // Read after latching manual: the value auto mode settled on is the right
+    // place to start stepping from, so the first click nudges the picture the
+    // driver already had rather than jumping somewhere unrelated.
     const curExp = getCamCtrl(dev, "exposure_absolute");
     const curGain = getCamCtrl(dev, "gain");
 
@@ -610,7 +624,7 @@ function handleCamAdjustExposure(dir: number): Record<string, unknown> {
     execSync(`v4l2-ctl -d ${dev} --set-ctrl=exposure_absolute=${newExp}`);
     execSync(`v4l2-ctl -d ${dev} --set-ctrl=gain=${newGain}`);
 
-    return { exposure_absolute: newExp, gain: newGain };
+    return { exposure_auto: EXPOSURE_MANUAL, exposure_absolute: newExp, gain: newGain };
   } catch (err: any) {
     return { error: err.message };
   }

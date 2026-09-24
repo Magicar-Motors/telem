@@ -306,8 +306,20 @@ function createServiceRow(name: string, status: string): ServiceState {
         const url = action ? `${SERVER_URL}/cam/exposure/${action}` : `${SERVER_URL}/cam/exposure`;
         const res = await fetch(url, { method: action ? "POST" : "GET" });
         const data = await res.json();
-        if (data.exposure_absolute != null) expValEl.textContent = `exp:${data.exposure_absolute} gain:${data.gain}`;
-      } catch {}
+        if (data.exposure_absolute != null) {
+          expValEl.textContent = `exp:${data.exposure_absolute} gain:${data.gain}`;
+          expValEl.removeAttribute("title");
+        } else {
+          // A refused v4l2 write comes back 200 with an error field. Leaving the
+          // stale number on screen made a broken control look like a dead one,
+          // so say so and keep the reason on hover.
+          expValEl.textContent = "exp:err";
+          expValEl.setAttribute("title", data.error || "no value returned");
+        }
+      } catch (err: any) {
+        expValEl.textContent = "exp:err";
+        expValEl.setAttribute("title", err?.message || "request failed");
+      }
     }
     camControls.querySelector("#svc-exp-down")!.addEventListener("click", () => camExposure("down"));
     camControls.querySelector("#svc-exp-up")!.addEventListener("click", () => camExposure("up"));
