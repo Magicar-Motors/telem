@@ -180,7 +180,7 @@ for i in "${!ROLES[@]}"; do
     ! jpegdec \
     ${overlay[@]+"${overlay[@]}"} \
     ! nvvidconv flip-method="${FLIPS[$i]}" ! 'video/x-raw(memory:NVMM)' \
-    ! nvv4l2h264enc maxperf-enable=true ratecontrol-enable=true EnableTwopassCBR=false peak-bitrate=${peak} bitrate=${bitrate} iframeinterval=15 insert-sps-pps=true \
+    ! nvv4l2h264enc maxperf-enable=true ratecontrol-enable=true EnableTwopassCBR=false peak-bitrate=${peak} bitrate=${bitrate} iframeinterval=15 idrinterval=15 insert-sps-pps=true \
     ! h264parse ! queue max-size-time=200000000 leaky=downstream ! mpegtsmux alignment=7 \
     ! srtsink uri="srt://${BIND_ADDR}:${PORTS[$i]}?mode=listener" latency=${SRT_LATENCY} sync=false &
   PIDS+=($!)
@@ -192,16 +192,21 @@ if [ ${#STARTED[@]} -eq 0 ]; then
   exit 1
 fi
 
-# Audio-only stream on fixed port 9002
-echo "Serving audio (LavMicro-U) → srt://${BIND_ADDR}:${AUDIO_PORT} (listener) ..."
-gst-launch-1.0 \
-  alsasrc device=hw:LavMicroU,0 provide-clock=true slave-method=skew buffer-time=40000 latency-time=10000 \
-  ! queue max-size-time=200000000 leaky=downstream ! audioconvert ! audioresample \
-  ! 'audio/x-raw,rate=48000,channels=1' \
-  ! opusenc bitrate=64000 frame-size=10 audio-type=voice \
-  ! opusparse ! mpegtsmux alignment=7 \
-  ! srtsink uri="srt://${BIND_ADDR}:${AUDIO_PORT}?mode=listener" latency=${SRT_LATENCY} sync=false &
-PIDS+=($!)
+# Audio-only stream on fixed port 9002. A missing microphone must not take the
+# camera streams down with it (for example after a USB hub or wiring change).
+if grep -q '^ *[0-9][0-9]* \[LavMicroU *\]' /proc/asound/cards; then
+  echo "Serving audio (LavMicro-U) → srt://${BIND_ADDR}:${AUDIO_PORT} (listener) ..."
+  gst-launch-1.0 \
+    alsasrc device=hw:LavMicroU,0 provide-clock=true slave-method=skew buffer-time=40000 latency-time=10000 \
+    ! queue max-size-time=200000000 leaky=downstream ! audioconvert ! audioresample \
+    ! 'audio/x-raw,rate=48000,channels=1' \
+    ! opusenc bitrate=64000 frame-size=10 audio-type=voice \
+    ! opusparse ! mpegtsmux alignment=7 \
+    ! srtsink uri="srt://${BIND_ADDR}:${AUDIO_PORT}?mode=listener" latency=${SRT_LATENCY} sync=false &
+  PIDS+=($!)
+else
+  echo "WARNING: LavMicro-U microphone not found; audio port ${AUDIO_PORT} stays dark"
+fi
 
 # v4l2 controls only stick once a pipeline has the device open.
 for i in ${STARTED[@]+"${STARTED[@]}"}; do
