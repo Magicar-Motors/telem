@@ -502,10 +502,9 @@ function handleServiceRestart(svc: string, password?: string): Record<string, un
 // --- Camera controls (v4l2-ctl) ---
 
 // Which camera these controls drive, by role name in streaming/cameras.conf.
-// The exposure knobs are for the forward camera; the others are along for the
-// ride. Matching on a model string instead would be ambiguous — the car runs
-// two identical C920x.
-const CAM_CONTROL_ROLE = process.env.CAM_CONTROL_ROLE || "forward";
+// The exposure knobs follow the front camera's role even if USB enumeration
+// changes. Matching on a model string would not identify the intended view.
+const CAM_CONTROL_ROLE = process.env.CAM_CONTROL_ROLE || "front";
 const CAMERA_CONFIG = process.env.CAMERA_CONFIG
   || fileURLToPath(new URL("../../streaming/cameras.conf", import.meta.url));
 

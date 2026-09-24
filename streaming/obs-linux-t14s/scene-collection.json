@@ -65,7 +65,7 @@
     "sources": [
         {
             "prev_ver": 536936448,
-            "name": "c1",
+            "name": "Pedal View",
             "uuid": "e0682064-56dc-4eac-aa2d-25b912d0bde3",
             "id": "ffmpeg_source",
             "versioned_id": "ffmpeg_source",
@@ -103,7 +103,7 @@
         },
         {
             "prev_ver": 536936448,
-            "name": "rear view",
+            "name": "Driver",
             "uuid": "6107b171-7d4a-4d81-b857-f4b304e79132",
             "id": "ffmpeg_source",
             "versioned_id": "ffmpeg_source",
@@ -285,7 +285,7 @@
                 "custom_size": false,
                 "items": [
                     {
-                        "name": "c1",
+                        "name": "Pedal View",
                         "source_uuid": "e0682064-56dc-4eac-aa2d-25b912d0bde3",
                         "visible": true,
                         "locked": false,
@@ -340,7 +340,7 @@
                         "private_settings": {}
                     },
                     {
-                        "name": "rear view",
+                        "name": "Driver",
                         "source_uuid": "6107b171-7d4a-4d81-b857-f4b304e79132",
                         "visible": true,
                         "locked": false,
