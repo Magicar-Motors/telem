@@ -1,0 +1,267 @@
+.restore-screen {
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  padding: 24px;
+}
+.restore-screen h1 {
+  font-size: 28px;
+  margin: 0;
+}
+.restore-screen p {
+  color: var(--muted);
+}
+@media (max-width: 900px),
+  (max-width: 1100px) and (pointer: coarse),
+  (display-mode: standalone),
+  (display-mode: fullscreen) {
+  .connected-app {
+    height: 100vh;
+    height: 100dvh;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    padding-top: env(safe-area-inset-top);
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  .connected-app .topbar {
+    height: 58px;
+    min-height: 58px;
+    padding: 0 max(16px, env(safe-area-inset-right)) 0
+      max(16px, env(safe-area-inset-left));
+  }
+  .connected-app .brand {
+    font-size: 20px;
+  }
+  .connected-app .brand-mark {
+    width: 29px;
+    height: 29px;
+    font-size: 23px;
+  }
+  .connected-app .remote-label {
+    display: none;
+  }
+  .connected-app .workspace {
+    width: 100%;
+    min-height: 0;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 12px max(14px, env(safe-area-inset-right)) 8px
+      max(14px, env(safe-area-inset-left));
+    overflow: hidden;
+  }
+  .connected-app .intro,
+  .connected-app footer,
+  .connected-app .help {
+    display: none;
+  }
+  .connected-app .outputs {
+    flex-shrink: 0;
+    gap: 8px;
+    margin: 0;
+  }
+  .connected-app .output {
+    padding: 10px 12px;
+    display: block;
+    border-radius: 8px;
+  }
+  .connected-app .output .format-symbol,
+  .connected-app .output .muted,
+  .connected-app .output-state {
+    display: none;
+  }
+  .connected-app .output .eyebrow {
+    font-size: 9px;
+    letter-spacing: 1px;
+    margin: 0 0 5px;
+  }
+  .connected-app .output h2 {
+    padding: 0;
+    margin: 0;
+    font-size: 13px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .connected-app .deck-toolbar {
+    margin: 0;
+    gap: 6px;
+    flex-direction: row;
+    align-items: center;
+    flex-shrink: 0;
+  }
+  .connected-app .deck-toolbar h2 {
+    font-size: 15px;
+    margin: 0;
+  }
+  .connected-app .deck-toolbar > .muted,
+  .connected-app .deck-toolbar > div > .muted {
+    display: none;
+  }
+  .connected-app .toolbar-controls {
+    width: auto;
+    gap: 6px;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
+  .connected-app .quiet {
+    font-size: 11px;
+    padding: 8px 10px;
+    min-height: 44px;
+  }
+  .connected-app .optional-search {
+    display: none;
+  }
+  .connected-app .search {
+    max-width: 150px;
+    min-width: 80px;
+  }
+  .connected-app .search input {
+    font-size: 16px;
+  }
+  .connected-app .paired-scenes {
+    min-height: 0;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+  }
+  .connected-app .column-heading {
+    display: none;
+  }
+  .connected-app .paired-grid {
+    min-height: 0;
+    flex: 1;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-auto-rows: minmax(100px, 1fr);
+    gap: 10px;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding: 3px;
+    scrollbar-width: thin;
+  }
+  .connected-app .scene {
+    min-height: 100px;
+    height: 100%;
+    padding: 16px 12px;
+    gap: 8px;
+    flex-direction: column;
+    align-items: flex-start;
+    justify-content: center;
+    border-radius: 14px;
+    touch-action: manipulation;
+    position: relative;
+  }
+  .connected-app .scene-number {
+    display: none;
+  }
+  .connected-app .scene-name {
+    flex: 0;
+    font-size: clamp(17px, 4.6vw, 27px);
+    font-weight: 600;
+    line-height: 1.2;
+    padding-right: 7px;
+  }
+  .connected-app .scene-name small {
+    font-size: 10px;
+    line-height: 1.4;
+    margin-top: 12px;
+    font-weight: 400;
+  }
+  .connected-app .scene-action {
+    position: absolute;
+    right: 10px;
+    top: 8px;
+    font-size: 13px;
+  }
+  .connected-app .scene.selected {
+    box-shadow: inset 0 0 0 1px var(--mint);
+  }
+  .connected-app .feedback {
+    flex-shrink: 0;
+    min-height: 22px;
+    max-height: 48px;
+    overflow: auto;
+    margin: 0;
+    padding: 3px 0;
+    font-size: 11px;
+    line-height: 1.4;
+  }
+  .connected-app .notice {
+    flex-shrink: 0;
+    margin: 0;
+    padding: 8px 12px;
+    font-size: 12px;
+    max-height: 18dvh;
+    overflow: auto;
+  }
+  .connected-app .demo-notice {
+    display: flex;
+    gap: 8px;
+    padding: 4px 10px;
+    font-size: 10px;
+  }
+  .connected-app .demo-notice > span {
+    width: auto;
+  }
+  .connected-app .demo-notice .text-button {
+    margin-left: auto;
+  }
+  .connected-app.settings-open .workspace {
+    display: block;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+  .connected-app.settings-open .connection-panel {
+    display: block;
+    margin: 0 0 12px;
+    padding: 18px;
+  }
+  .connected-app.settings-open .connection-panel form {
+    margin-top: 20px;
+  }
+  .connected-app.settings-open .outputs,
+  .connected-app.settings-open .deck-toolbar,
+  .connected-app.settings-open .paired-scenes {
+    display: none;
+  }
+  .connected-app.settings-open .help {
+    display: block;
+  }
+  .connected-app.settings-open .notice {
+    margin: 12px 0;
+    max-height: none;
+  }
+}
+@media (max-width: 1100px) and (orientation: landscape) and (max-height: 550px) {
+  .connected-app .topbar {
+    height: 48px;
+    min-height: 48px;
+  }
+  .connected-app .workspace {
+    gap: 6px;
+    padding-top: 6px;
+  }
+  .connected-app .outputs {
+    display: none;
+  }
+  .connected-app .paired-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 8px;
+  }
+  .connected-app .scene-name {
+    font-size: 18px;
+  }
+  .connected-app .scene {
+    padding: 12px;
+    min-height: 80px;
+  }
+  .connected-app .paired-grid {
+    grid-auto-rows: minmax(80px, 1fr);
+  }
+}
