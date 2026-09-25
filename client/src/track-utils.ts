@@ -113,6 +113,7 @@ export function buildSpeedTrail(
   coords: [number, number][],
   speeds: number[],
   existing: L.Polyline[],
+  weight = 2,
 ): L.Polyline[] {
   for (const p of existing) p.remove();
   if (coords.length < 2) return [];
@@ -139,7 +140,7 @@ export function buildSpeedTrail(
 
     const line = L.polyline(slice as L.LatLngExpression[], {
       color,
-      weight: 2,
+      weight,
       opacity,
     }).addTo(map);
     segments.push(line);

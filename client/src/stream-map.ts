@@ -10,6 +10,10 @@ import { snapToTrack, buildSpeedTrail } from "./track-utils";
 const TRAIL_MAX = 3000;
 const TRACK_COLOR = "rgba(255, 255, 255, 0.35)";
 const MAP_UPDATE_INTERVAL = 100;
+// Overlay is shown small in the OBS scene, so lines and the car arrow are
+// drawn at 3x the dashboard size to stay readable.
+const LINE_WEIGHT = 6;
+const ARROW_PX = 60;
 
 const mgr = new TelemetryManager();
 const trackDef = getTrack(STREAM_TRACK_ID);
@@ -35,8 +39,8 @@ const map = L.map(mapEl, {
 // track outline
 L.polyline(trackDef.track as L.LatLngExpression[], {
   color: TRACK_COLOR,
-  weight: 2,
-  dashArray: "6 4",
+  weight: LINE_WEIGHT,
+  dashArray: "18 12",
 }).addTo(map);
 
 // S/F marker
@@ -66,11 +70,11 @@ for (const t of trackDef.turns) {
 function makeArrowIcon(heading: number): L.DivIcon {
   return L.divIcon({
     className: "car-arrow",
-    html: `<svg width="20" height="20" viewBox="0 0 20 20" style="transform:rotate(${heading}deg)">
+    html: `<svg width="${ARROW_PX}" height="${ARROW_PX}" viewBox="0 0 20 20" style="transform:rotate(${heading}deg)">
       <polygon points="10,2 16,16 10,12 4,16" fill="#e74c3c" stroke="#fff" stroke-width="1.5"/>
     </svg>`,
-    iconSize: [20, 20],
-    iconAnchor: [10, 10],
+    iconSize: [ARROW_PX, ARROW_PX],
+    iconAnchor: [ARROW_PX / 2, ARROW_PX / 2],
   });
 }
 
@@ -124,7 +128,7 @@ function update(): void {
 
   // snap to track + draw trail
   const snapped = coords.map(([la, lo]) => snapToTrack(trackDef.track, la, lo));
-  trailSegments = buildSpeedTrail(map, snapped, speeds, trailSegments);
+  trailSegments = buildSpeedTrail(map, snapped, speeds, trailSegments, LINE_WEIGHT);
 
   const [sLat, sLon] = snapToTrack(trackDef.track, lat, lon);
   marker.setLatLng([sLat, sLon]);
