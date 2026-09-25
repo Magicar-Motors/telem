@@ -307,6 +307,36 @@ describe("HTTP server", () => {
     });
   });
 
+  describe("/sessions — single running session", () => {
+    it("stops any running session when a new one is created", async () => {
+      const a = await request(port, "POST", "/sessions", { track: "sonoma" });
+      const b = await request(port, "POST", "/sessions", { track: "thunderhill_west" });
+      expect(b.status).toBe(201);
+      expect(b.body.running).toBe(true);
+
+      const oldA = await request(port, "GET", `/sessions/${a.body.id}`);
+      expect(oldA.body.running).toBe(false);
+
+      const all = await request(port, "GET", "/sessions");
+      const running = all.body.filter((s: any) => s.running);
+      expect(running.map((s: any) => s.id)).toEqual([b.body.id]);
+    });
+
+    it("PATCH running:false keeps the server's laps over the client's", async () => {
+      const s = await request(port, "POST", "/sessions", { track: "sonoma" });
+      const res = await request(port, "PATCH", `/sessions/${s.body.id}`, {
+        running: false,
+        laps: [{ lap: 1, time: 1, flag: "clean", track: "x", startSeq: 0, endSeq: 0 }],
+        driver: "someone",
+      });
+      expect(res.status).toBe(200);
+      expect(res.body.running).toBe(false);
+      expect(res.body.driver).toBe("someone");
+      // Stopped within 5s of starting, so no in-lap, and the client's lap is ignored.
+      expect(res.body.laps).toEqual([]);
+    });
+  });
+
   describe("404", () => {
     it("returns 404 for unknown routes", async () => {
       const res = await request(port, "GET", "/nonexistent");

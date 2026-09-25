@@ -4,7 +4,7 @@ import { readFileSync, readdirSync, realpathSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { pack } from "msgpackr";
 import { WalEngine, WalEntry } from "./wal.js";
-import { SessionStore, type Lap } from "./sessions.js";
+import { SessionStore, type Session } from "./sessions.js";
 import { LapDetector, type LapEvent } from "./lap-detector.js";
 import { UdpSender, normalizeAddr } from "./udp-sender.js";
 
@@ -405,6 +405,11 @@ async function handleSessions(
       let body: any;
       try { body = JSON.parse(raw); } catch { json(res, 400, { error: "invalid json" }); return; }
       if (!body.track) { json(res, 400, { error: "track is required" }); return; }
+      // Only one session may run at a time: a forgotten one keeps collecting
+      // laps from every later drive on its track.
+      for (const s of store.list()) {
+        if (s.running) stopSession(store, s.id, wal.currentSeq);
+      }
       json(res, 201, store.create(body.track, wal.currentSeq, body.driver));
     } else {
       json(res, 405, { error: "method not allowed" });
@@ -420,26 +425,11 @@ async function handleSessions(
       let body: any;
       try { body = JSON.parse(raw); } catch { json(res, 400, { error: "invalid json" }); return; }
 
-      // When stopping a session, record the in-progress lap as "in" lap
-      if (body.running === false) {
-        const current = store.get(id);
-        if (current?.running) {
-          const now = Date.now();
-          const elapsed = now - current.lapStartTs;
-          if (elapsed > 5000) {
-            // Record the incomplete lap as an in-lap
-            const inLap: Lap = {
-              lap: current.laps.length + 1,
-              time: elapsed,
-              flag: "in",
-              track: current.track,
-              startSeq: current.lapStartSeq,
-              endSeq: wal.currentSeq,
-            };
-            current.laps.push(inLap);
-          }
-          body.laps = current.laps;
-        }
+      if (body.running === false && store.get(id)?.running) {
+        stopSession(store, id, wal.currentSeq);
+        // The server's lap list, now with the in-lap, wins over the client's copy.
+        delete body.running;
+        delete body.laps;
       }
 
       const session = store.update(id, body);
@@ -452,6 +442,28 @@ async function handleSessions(
       json(res, 405, { error: "method not allowed" });
     }
   }
+}
+
+/**
+ * Stop a session, recording the in-progress lap as an "in" lap if it has run
+ * longer than 5s. Returns null if the session doesn't exist.
+ */
+function stopSession(store: SessionStore, id: string, endSeq: number): Session | null {
+  const current = store.get(id);
+  if (!current) return null;
+  if (!current.running) return current;
+  const elapsed = Date.now() - current.lapStartTs;
+  if (elapsed > 5000) {
+    current.laps.push({
+      lap: current.laps.length + 1,
+      time: elapsed,
+      flag: "in",
+      track: current.track,
+      startSeq: current.lapStartSeq,
+      endSeq,
+    });
+  }
+  return store.update(id, { running: false, laps: current.laps });
 }
 
 // --- Systemctl service management ---
