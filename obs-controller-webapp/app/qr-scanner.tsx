@@ -190,11 +190,11 @@ export default function QrScanner({
           checked={keepHost}
           onChange={(e) => setKeepHost(e.target.checked)}
         />
-        Keep current server host (Tailscale)
+        Keep current server address (Funnel / Tailscale)
       </label>
       <small>
         OBS usually puts a local Wi-Fi address in its QR code. Keep this checked
-        to import the password and port while retaining your current host.
+        to import the password while retaining your Funnel endpoint or Tailscale host.
       </small>
       <video
         ref={video}

@@ -29,6 +29,9 @@ export function retainCurrentHost(scanned, currentAddress) {
     if (!["ws:", "wss:"].includes(current.protocol) || !current.hostname)
       throw new Error();
     const target = new URL(scanned.address);
+    if (current.protocol === "wss:" && current.pathname === "/obs") {
+      return { ...scanned, address: `${current.origin}/obs` };
+    }
     target.hostname = current.hostname;
     return { ...scanned, address: target.origin };
   } catch {

@@ -2,6 +2,12 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { parseObsQr, retainCurrentHost } from "../lib/qr.mjs";
 
+test("keeps the secure Funnel endpoint when scanning a local OBS QR", () => {
+  assert.deepEqual(retainCurrentHost(parseObsQr("obsws://192.168.1.2:4455/secret"), "wss://studio.example/obs"), {
+    address: "wss://studio.example/obs", password: "secret",
+  });
+});
+
 test("parses the OBS QR and percent-decodes its password without leaking it into the address", () => {
   assert.deepEqual(parseObsQr("obsws://192.168.1.2:4455/a%2Fb%23c%25%20d"), {
     address: "ws://192.168.1.2:4455",
