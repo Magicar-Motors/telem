@@ -24,6 +24,48 @@ export const ECT_TABLE: [number, number][] = [
   [0.7, 60], [0.4, 80], [0.2, 100], [0.1, 120],
 ];
 
+// ── ECT sense circuit ──
+//
+// The ECU's sensor ground sits a few hundred mV below the Mega's ground (measured
+// -0.4 to -0.5V, possibly -0.6V on track), which would clip a hot ECT reading at 0V.
+// ECT and ECU ground are therefore each read through an identical biased divider:
+//
+//   ECU ECT signal  ──[100k]──┬── A8   ──[470k]── Mega 5V
+//   ECU sensor gnd  ──[100k]──┬── A13  ──[470k]── Mega 5V
+//
+// Both pins read: V_pin = GAIN × V_in + BIAS, where V_in is relative to Mega GND.
+
+export const ECT_SENSE_SERIES_KOHM = 100; // tap → pin
+export const ECT_SENSE_BIAS_KOHM = 470;   // pin → Mega 5V
+export const ECT_SENSE_VREF = 5.0;        // Mega 5V, also the ADC reference
+/** (V_A8 − V_A13) with both taps shorted to Mega GND on the bench. Uncalibrated: 0. */
+export const ECT_SENSE_ZERO_V = 0;
+
+export interface EctSense {
+  /** ECT signal relative to the ECU's sensor ground: what the ECU itself reads. */
+  ectV: number;
+  /** ECU sensor ground relative to Mega GND, bias removed. Negative = ECU ground is lower. */
+  ecuGndDeltaV: number;
+}
+
+/** Undo both biased dividers and reference ECT to the ECU's own ground. */
+export function ectSense(ectPinV: number, gndPinV: number): EctSense {
+  // Divider: V_pin = V_in·R_bias/(R_series+R_bias) + VREF·R_series/(R_series+R_bias)
+  const rTotal = ECT_SENSE_SERIES_KOHM + ECT_SENSE_BIAS_KOHM;  // 570k
+  const gain = ECT_SENSE_BIAS_KOHM / rTotal;                   // 470/570 = 0.8246
+  const bias = ECT_SENSE_VREF * ECT_SENSE_SERIES_KOHM / rTotal; // 5·100/570 = 0.8772 V
+
+  // Invert each divider: V_in = (V_pin − BIAS) / GAIN, relative to Mega GND.
+  const ectVsMega = (ectPinV - bias) / gain;
+  const gndVsMega = (gndPinV - bias) / gain;
+
+  // ECT as the ECU sees it = ECT vs Mega − ECU ground vs Mega. BIAS cancels here,
+  // so this equals (V_A8 − V_A13) / GAIN; the bench zero removes resistor mismatch.
+  const ectV = ectVsMega - gndVsMega - ECT_SENSE_ZERO_V / gain;
+
+  return { ectV, ecuGndDeltaV: gndVsMega };
+}
+
 // ── Forward conversions (voltage → physical) ──
 
 /** TPS: 0.5V = 0%, 4.5V = 100%. Clamped to 0–100. */

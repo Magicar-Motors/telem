@@ -1,6 +1,6 @@
 /**
  * Reads ECU telemetry from Arduino Mega over serial and POSTs to /ingest.
- * Serial format: "ect tps map brake vbatt rpm vss_hz oil_temp_f oil_pressure_psi\n"
+ * Serial format: "ect tps map brake vbatt rpm vss_hz oil_temp_f oil_pressure_psi ect_gnd\n"
  * (space-separated, 25Hz)
  *
  * Vehicle: 1992 Honda Accord EX (F22A1)
@@ -20,7 +20,9 @@
  *     At idle: ~1.0–1.3V (~36–46 kPa). At WOT: ~3.0V (~101 kPa)
  *     Source: https://easyautodiagnostics.com/honda/2200/map-sensor-tests
  *
- *   ECT (Engine Coolant Temperature) — Pin A8
+ *   ECT (Engine Coolant Temperature) — Pin A8, ECU sensor ground — Pin A13
+ *     Both read through biased 100k/470k dividers so a negative ECU ground offset
+ *     can't clip; see ectSense() in sensors.ts for the circuit and the math.
  *     NTC thermistor via voltage divider. Nonlinear.
  *     Honda typical resistance: 20kΩ @ -20°C, ~0.1kΩ @ 120°C
  *     Approximate voltage-to-temp lookup (Honda 2-wire ECT sensor):
@@ -63,7 +65,7 @@
 import { createInterface } from "readline";
 import { createReadStream } from "fs";
 import { execSync } from "child_process";
-import { tpsToPercent, mapToKpa, ectToTempC } from "../src/sensors.js";
+import { tpsToPercent, mapToKpa, ectToTempC, ectSense } from "../src/sensors.js";
 
 const SERIAL_PORT = process.argv[2] || "/dev/ttyACM0";
 const INGEST_URL = process.env.INGEST_URL || "http://localhost:4400/ingest";
@@ -85,7 +87,7 @@ function vssToKph(hz: number): number {
 
 async function main() {
   console.log(`serial-bridge: ${SERIAL_PORT} → ${INGEST_URL}`);
-  console.log(`  format: ect tps map brake vbatt rpm vss_hz [oil_temp_f oil_pressure_psi]`);
+  console.log(`  format: ect tps map brake vbatt rpm vss_hz [oil_temp_f oil_pressure_psi [ect_gnd]]`);
 
   execSync(`stty -F ${SERIAL_PORT} 115200 raw -echo`);
 
@@ -99,13 +101,13 @@ async function main() {
 
   rl.on("line", async (line) => {
     const parts = line.trim().split(/\s+/);
-    // Accept the old seven-field firmware during deployment as well as the
-    // new nine-field format so the bridge and Mega can be updated separately.
-    if (parts.length !== 7 && parts.length !== 9) return;
+    // Accept older seven- and nine-field firmware as well as the ten-field
+    // format so the bridge and Mega can be updated separately.
+    if (parts.length !== 7 && parts.length !== 9 && parts.length !== 10) return;
 
     const [
       ectStr, tpsStr, mapStr, brakeStr, vbattStr, rpmStr, vssStr,
-      oilTempFStr, oilPressurePsiStr,
+      oilTempFStr, oilPressurePsiStr, ectGndStr,
     ] = parts;
     const ectV = parseFloat(ectStr);
     const tpsV = parseFloat(tpsStr);
@@ -116,6 +118,10 @@ async function main() {
     const vssHz = parseFloat(vssStr);
     const oilTempF = oilTempFStr === undefined ? NaN : parseFloat(oilTempFStr);
     const oilPressurePsi = oilPressurePsiStr === undefined ? NaN : parseFloat(oilPressurePsiStr);
+    const ectGndV = ectGndStr === undefined ? NaN : parseFloat(ectGndStr);
+    // Without the ground pin (older firmware), fall back to ECT vs Mega GND.
+    const sense = Number.isFinite(ectGndV) ? ectSense(ectV, ectGndV) : null;
+    const ectRelV = sense ? sense.ectV : ectV;
 
     if (!rpmInit) { rpmSmoothed = rpmRaw; rpmInit = true; }
     else rpmSmoothed = RPM_EMA_ALPHA * rpmRaw + (1 - RPM_EMA_ALPHA) * rpmSmoothed;
@@ -126,7 +132,7 @@ async function main() {
 
     const payload = [
       // Converted values
-      { channel: "coolant_temp", value: Math.round(ectToTempC(ectV) * 10) / 10 },
+      { channel: "coolant_temp", value: Math.round(ectToTempC(ectRelV) * 10) / 10 },
       { channel: "throttle_pos", value: Math.round(tpsToPercent(tpsV) * 10) / 10 },
       { channel: "manifold_pressure", value: Math.round(mapToKpa(mapV) * 10) / 10 },
       { channel: "brake", value: brakeV > BRAKE_THRESHOLD_V ? 1 : 0 },
@@ -140,6 +146,14 @@ async function main() {
       { channel: "brake_voltage", value: Math.round(brakeV * 100) / 100 },
       { channel: "vss_hz", value: Math.round(vssHz * 10) / 10 },
     ];
+
+    if (sense) {
+      payload.push(
+        { channel: "ect_gnd_voltage", value: Math.round(ectGndV * 1000) / 1000 },
+        { channel: "ect_voltage_ecu", value: Math.round(sense.ectV * 1000) / 1000 },
+        { channel: "ecu_gnd_delta", value: Math.round(sense.ecuGndDeltaV * 1000) / 1000 },
+      );
+    }
 
     // A disconnected temperature sender is emitted as "nan" by the Mega.
     // Keep ingesting all other channels and omit only the unavailable sensor.
