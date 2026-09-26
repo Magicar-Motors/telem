@@ -2,6 +2,12 @@ import { TelemetryEntry, ConnectionState, ChannelBuffer, Heartbeat, Tick } from 
 import { SERVER_URL, LIVE_URL } from "./server-url";
 
 const MAX_POINTS = 6000; // ~2 min at 50Hz
+// LIVE means data is flowing, not just that the stream is open.
+const DATA_STALE_MS = 5000;
+// Both servers send an `hb` every second, so this long with no event at all
+// means the socket is dead even if the browser hasn't noticed.
+const LINK_STALE_MS = 5000;
+const WATCHDOG_MS = 1000;
 
 export class TelemetryManager {
   readonly serverUrl = SERVER_URL;
@@ -15,7 +21,9 @@ export class TelemetryManager {
   private _dirty = false;
   private retryDelay = 1000;
   private retryTimer: ReturnType<typeof setTimeout> | null = null;
-  private staleTimer: ReturnType<typeof setTimeout> | null = null;
+  private watchdog: ReturnType<typeof setInterval> | null = null;
+  private lastEventAt = 0;
+  private lastDataAt = 0;
 
   onStateChange: ((state: ConnectionState) => void) | null = null;
 
@@ -78,13 +86,28 @@ export class TelemetryManager {
     return ema;
   }
 
+  /**
+   * States only change on real transitions:
+   *   CONNECTING    page start, or stream open but no data for DATA_STALE_MS
+   *   LIVE          a data packet arrived within DATA_STALE_MS
+   *   DISCONNECTED  the stream errored or went silent. Retries keep this state
+   *                 until one opens, so a dead server doesn't flicker.
+   */
   connect(): void {
-    this.cleanup();
-
+    if (this.retryTimer) {
+      clearTimeout(this.retryTimer);
+      this.retryTimer = null;
+    }
     this.setState("connecting");
+    this.open();
+  }
+
+  private open(): void {
+    this.cleanup();
 
     const es = new EventSource(`${LIVE_URL}/stream`);
     this.es = es;
+    this.lastEventAt = Date.now();
 
     // The live path: one merged tick per WAL batch, off the UDP feed.
     es.addEventListener("tick", (e) => {
@@ -102,19 +125,19 @@ export class TelemetryManager {
       const hb: Heartbeat = JSON.parse(e.data);
       this.lastHb = hb;
       this.lastHbArrival = Date.now();
+      this.lastEventAt = this.lastHbArrival;
     });
 
     es.onopen = () => {
-      this.setState("live");
       this.retryDelay = 1000;
-      this.resetStaleTimer();
+      this.lastEventAt = Date.now();
+      // Reachable, but LIVE waits for the first data packet.
+      if (this._state !== "live") this.setState("connecting");
     };
 
-    es.onerror = () => {
-      this.cleanup();
-      this.setState("disconnected");
-      this.scheduleReconnect();
-    };
+    es.onerror = () => this.dropLink();
+
+    this.watchdog = setInterval(() => this.checkStale(), WATCHDOG_MS);
   }
 
   disconnect(): void {
@@ -126,14 +149,31 @@ export class TelemetryManager {
     this.setState("disconnected");
   }
 
+  private checkStale(): void {
+    const now = Date.now();
+    if (now - this.lastEventAt > LINK_STALE_MS) {
+      this.dropLink();
+      return;
+    }
+    if (this._state === "live" && now - this.lastDataAt > DATA_STALE_MS) {
+      this.setState("connecting");
+    }
+  }
+
+  private dropLink(): void {
+    this.cleanup();
+    this.setState("disconnected");
+    this.scheduleReconnect();
+  }
+
   private cleanup(): void {
     if (this.es) {
       this.es.close();
       this.es = null;
     }
-    if (this.staleTimer) {
-      clearTimeout(this.staleTimer);
-      this.staleTimer = null;
+    if (this.watchdog) {
+      clearInterval(this.watchdog);
+      this.watchdog = null;
     }
   }
 
@@ -141,7 +181,7 @@ export class TelemetryManager {
     if (this.retryTimer) return;
     this.retryTimer = setTimeout(() => {
       this.retryTimer = null;
-      this.connect();
+      this.open();
     }, this.retryDelay);
     this.retryDelay = Math.min(this.retryDelay * 1.5, 10000);
   }
@@ -150,6 +190,12 @@ export class TelemetryManager {
     if (this._state === s) return;
     this._state = s;
     this.onStateChange?.(s);
+  }
+
+  private markData(): void {
+    this._dirty = true;
+    this.lastDataAt = this.lastEventAt = Date.now();
+    this.setState("live");
   }
 
   /** Merged tick — fan its channels into the same per-channel buffers. */
@@ -162,8 +208,7 @@ export class TelemetryManager {
       if (typeof value === "number") this.pushSample(channel, tick.ts, value);
     }
 
-    this._dirty = true;
-    this.resetStaleTimer();
+    this.markData();
   }
 
   private ingest(entry: TelemetryEntry): void {
@@ -172,8 +217,7 @@ export class TelemetryManager {
 
     this.pushSample(entry.channel, entry.ts, entry.value);
 
-    this._dirty = true;
-    this.resetStaleTimer();
+    this.markData();
   }
 
   private pushSample(channel: string, ts: number, value: number): void {
@@ -192,16 +236,5 @@ export class TelemetryManager {
       buf.timestamps.splice(0, excess);
       buf.values.splice(0, excess);
     }
-  }
-
-  private resetStaleTimer(): void {
-    if (this.staleTimer) clearTimeout(this.staleTimer);
-    this.staleTimer = setTimeout(() => {
-      if (this._state === "live") {
-        this.setState("disconnected");
-        this.cleanup();
-        this.scheduleReconnect();
-      }
-    }, 5000);
   }
 }

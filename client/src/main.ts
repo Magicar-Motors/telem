@@ -98,6 +98,19 @@ function fmtUtc(epochMs: number): string {
   return `${p(d.getUTCHours())}:${p(d.getUTCMinutes())}:${p(d.getUTCSeconds())}.${p(d.getUTCMilliseconds(), 3)}`;
 }
 
+/** Short duration for header stats: at most 5 characters before the sign
+ *  (999ms, 59.9s, 59min, 47.9h, 999d), so a stale feed can't widen the header. */
+function fmtDuration(ms: number, signed = false): string {
+  const sign = ms < 0 ? "-" : signed ? "+" : "";
+  const a = Math.abs(ms);
+  const body = a < 1000 ? `${Math.round(a)}ms`
+    : a < 59_950 ? `${(a / 1000).toFixed(1)}s`
+    : a < 3_570_000 ? `${Math.round(a / 60_000)}min`
+    : a < 172_800_000 ? `${(a / 3_600_000).toFixed(1)}h`
+    : `${Math.round(a / 86_400_000)}d`;
+  return sign + body;
+}
+
 function updateClocks(): void {
   const now = Date.now();
   localUtcEl.textContent = fmtUtc(now);
@@ -113,16 +126,14 @@ function updateClocks(): void {
 
   telemUtcEl.textContent = fmtUtc(telemTs);
   const skew = now - telemTs;
-  skewEl.textContent = `${skew >= 0 ? "+" : ""}${skew}ms`;
+  skewEl.textContent = fmtDuration(skew, true);
 }
 
 // `lag` counts seqs the car has that we don't, so it survives the two machines'
 // clocks disagreeing. `loss` is what congestion looks like now that the live
 // feed is lossy UDP — it degrades instead of falling behind.
 latencyProbe.onUpdate = (b) => {
-  lagEl.textContent = b.lagMs >= 1000
-    ? `${(b.lagMs / 1000).toFixed(1)}s`
-    : `${b.lagMs}ms`;
+  lagEl.textContent = fmtDuration(b.lagMs);
   lossEl.textContent = b.leaseOk ? `${b.lossPct}%` : "NO LEASE";
   console.log(`[latency] ${formatBreakdown(b)}`);
 };
