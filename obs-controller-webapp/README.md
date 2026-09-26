@@ -2,7 +2,43 @@
 
 A phone-friendly OBS remote built with Node/npm, React and obs-websocket-js. Only BC-prefixed scenes appear as buttons. One tap switches the horizontal scene and its matching `(Vertical)` scene together, with separate current-output indicators, search, accidental-tap lock, and an explicitly labeled demo. OBS state refreshes every two seconds and on returning to the tab.
 
-## Run over Tailscale
+## Public phone access with Tailscale Funnel
+
+On the OBS computer, enable OBS WebSocket **password authentication**, then run:
+
+```sh
+npm install
+npm run build:funnel
+npm run start:funnel
+```
+
+In another terminal:
+
+```sh
+tailscale funnel --bg --yes http://127.0.0.1:8787
+```
+
+Open the HTTPS URL printed by Tailscale on your phone. The phone does **not** need Tailscale. The secure OBS address is filled automatically; enter your OBS WebSocket password or scan its QR with “Keep current server address” checked. Scanning preserves the complete Funnel endpoint. Refresh restores the same temporary session as local access.
+
+The gateway binds only to loopback, proxies the production app on port 5175, and relays `/obs` to local OBS on port 4455. It preserves OBS's challenge/response authentication, rejects cross-origin browser connections, and refuses connections if OBS authentication is disabled. The page is public; anyone with the OBS password has full OBS WebSocket control, so use a strong unique password and keep the QR private. No OBS credentials are stored on the gateway. Override `OBS_PORT`, `SCENE_DECK_PORT`, or `SCENE_DECK_APP_PORT` if needed (adjust the Funnel command for a different gateway port).
+
+The computer must stay awake with OBS, Tailscale, and `npm run start:funnel` running. Restart that command after reboot; `--bg` persists routing, not the Node process. Stop public access with `tailscale funnel --https=443 off`.
+
+If Tailscale says “Funnel is not enabled on your tailnet,” a tailnet administrator must enable the `funnel` node attribute for this computer in the [tailnet policy](https://tailscale.com/docs/features/tailscale-funnel). Then rerun the command. Do not replace existing policy or expose port 4455 separately.
+
+### Scan the link from your terminal
+
+`npm run start:funnel` prints the active public URL as a QR code using text block characters, supported by Apple Terminal. Scan it with your phone’s Camera app. Keep the terminal wide enough that the code does not wrap.
+
+If you enable Funnel after starting the controller, or want to show the code again without restarting:
+
+```sh
+npm run funnel:qr
+```
+
+The code contains only the public website URL, never an OBS password. It is shown only when Tailscale reports an active Funnel pointing at this controller’s port. DNS may still take a few minutes to become available after first enabling Funnel.
+
+## Private access over Tailscale
 
 On the OBS computer (Node 22.13+):
 

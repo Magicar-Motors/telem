@@ -158,7 +158,7 @@ export default function Controller() {
     if (location.protocol === "https:" && url.protocol === "ws:") {
       setSettings(true);
       setError(
-        "Open this controller over HTTP using your computer’s Tailscale address. An HTTPS website requires a secure wss:// OBS endpoint.",
+        "Use this page’s secure wss:// address for Funnel, or open the local HTTP address for a direct OBS connection.",
       );
       return;
     }
@@ -259,11 +259,12 @@ export default function Controller() {
       } else {
         try {
           setAddress(
-            localStorage.getItem("scene-deck-address") ||
-              `ws://${location.hostname}:4455`,
+            location.protocol === "https:"
+              ? `wss://${location.host}/obs`
+              : localStorage.getItem("scene-deck-address") || `ws://${location.hostname}:4455`,
           );
         } catch {
-          setAddress(`ws://${location.hostname}:4455`);
+          setAddress(location.protocol === "https:" ? `wss://${location.host}/obs` : `ws://${location.hostname}:4455`);
         }
         setBooting(false);
       }
@@ -401,11 +402,11 @@ export default function Controller() {
               <h2>Connect your studio</h2>
               <p>
                 In OBS, open <strong>Tools → WebSocket Server Settings</strong>{" "}
-                and enable the server. Use your OBS computer’s Tailscale IP and
-                WebSocket password below.
+                and enable the server and authentication. The Funnel link fills
+                in the secure address; enter or scan your OBS WebSocket password.
               </p>
               <small>
-                Keep Tailscale connected on both devices. This tab remembers
+                With Funnel, only the OBS computer needs Tailscale. This tab remembers
                 your connection for up to 12 hours. Disconnect clears it.
               </small>
             </div>
@@ -669,11 +670,9 @@ export default function Controller() {
         <details className="help">
           <summary>Setup & vertical scene help</summary>
           <p>
-            On your phone, open <code>http://YOUR-OBS-TAILSCALE-IP:5173</code>{" "}
-            while this app runs on the OBS computer. Connect to{" "}
-            <code>ws://YOUR-OBS-TAILSCALE-IP:4455</code>. Both devices must be
-            connected to your tailnet, with access to ports 5173 and 4455
-            allowed by your firewall and Tailscale policy.
+            Open your computer’s HTTPS Funnel link on your phone, then enter
+            your OBS WebSocket password. Your phone does not need Tailscale.
+            For local HTTP access, both devices still need Tailscale.
           </p>
           <p>
             Create one scene named <code>Vertical Output</code> in the Restream
@@ -690,9 +689,9 @@ export default function Controller() {
           <p>
             Changes made inside OBS update here every two seconds. Both views
             are switched by this controller and confirmed separately; the two
-            OBS operations are not frame-atomic. Use the HTTP URL over
-            Tailscale; HTTPS hosting requires a secure <code>wss://</code> OBS
-            endpoint. Do not forward OBS’s port to the public internet.
+            OBS operations are not frame-atomic. Funnel provides a secure
+            <code> wss://</code> relay with OBS password authentication.
+            Do not forward OBS’s port to the public internet.
           </p>
         </details>
       </div>
