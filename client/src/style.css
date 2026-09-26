@@ -1,7 +1,28 @@
 @import "./base.css";
 
-.status-group {
+/* Nothing in the header wraps inside itself, and the title side never shrinks.
+   If the window is too narrow, the status group wraps onto a second row instead
+   of stacking the title text or pushing the nav off-screen. */
+#status-bar {
   gap: 16px;
+}
+
+#status-bar .header-left {
+  flex-shrink: 0;
+}
+
+#status-bar .header-left > *,
+.status-group > * {
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.status-group {
+  flex: 1 1 0;
+  min-width: 0;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px 16px;
 }
 
 .stat {
@@ -11,15 +32,22 @@
   text-transform: uppercase;
 }
 
+/* Each value reserves room for its longest normal reading (--chars, counting
+   the 1px letter-spacing), so ticking digits never shift the nav or flip the
+   wrap. Skew and lag are capped at 6 characters by fmtDuration. */
 .stat b {
+  display: inline-block;
+  min-width: calc(var(--chars, 0) * (1ch + 1px));
   color: var(--text-bright);
-}
-
-/* Fixed-width so the ms digits don't shuffle the nav around as they tick. */
-.stat.clock {
-  white-space: nowrap;
   font-variant-numeric: tabular-nums;
 }
+
+#stat-latency { --chars: 6; } /* 9999ms */
+#stat-seq     { --chars: 8; }
+#stat-rate    { --chars: 5; } /* 999/s */
+#stat-skew    { --chars: 6; } /* +999ms, +59.9s, +59min */
+#stat-lag     { --chars: 5; } /* 999ms, 59.9s */
+#stat-loss    { --chars: 8; } /* NO LEASE */
 
 #latency-spark {
   height: 16px;
@@ -31,6 +59,9 @@
   display: flex;
   align-items: center;
   gap: 6px;
+  /* Sized for DISCONNECTED (12 chars + 2px spacing each, plus dot and gap) so
+     state changes don't move the nav links. */
+  min-width: calc(12 * (1ch + 2px) + 12px);
   font-size: 10px;
   font-weight: 700;
   letter-spacing: 2px;
