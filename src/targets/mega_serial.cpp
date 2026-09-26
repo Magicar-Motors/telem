@@ -15,7 +15,8 @@ constexpr uint32_t TELEMETRY_PERIOD_MS = 40; // 25 Hz
 // Source of truth:
 // 2026.03.18:
 //
-// ECT A8
+// ECT A8 (100k series from the ECU tap, 470k bias to 5V)
+// ECU sensor ground A13 (100k series from the ECU tap, 470k bias to 5V)
 // TPS A9
 // MAP A10
 // AEM 30-2130-100 oil pressure sensor A0
@@ -28,6 +29,7 @@ constexpr uint32_t TELEMETRY_PERIOD_MS = 40; // 25 Hz
 
 // ── Analog pins ──
 constexpr int PIN_ECT   = A8;
+constexpr int PIN_ECT_GND = A13;
 constexpr int PIN_TPS   = A9;
 constexpr int PIN_MAP   = A10;
 constexpr int PIN_OIL_PRESSURE = A0;
@@ -133,6 +135,7 @@ static float last_vss_hz = 0.0f;
 void setup() {
   pinMode(LED_PIN, OUTPUT);
   pinMode(PIN_ECT, INPUT);
+  pinMode(PIN_ECT_GND, INPUT);
   pinMode(PIN_TPS, INPUT);
   pinMode(PIN_MAP, INPUT);
   pinMode(PIN_OIL_PRESSURE, INPUT);
@@ -181,6 +184,9 @@ void loop() {
     last_telem = now;
 
     float ect   = analogRead(PIN_ECT)   * (VREF / ADC_MAX);
+    // Read straight after ECT: both nodes sit near the same voltage, so the
+    // shared sample-and-hold carries almost nothing over through the 82k source.
+    float ect_gnd = analogRead(PIN_ECT_GND) * (VREF / ADC_MAX);
     float tps   = analogRead(PIN_TPS)   * (VREF / ADC_MAX);
     float map_v = analogRead(PIN_MAP)   * (VREF / ADC_MAX);
     float brake = analogRead(PIN_BRAKE) * (VREF / ADC_MAX) * VDIV_RATIO;
@@ -200,7 +206,7 @@ void loop() {
       oil_temp_f = oilTempResistanceToF(oil_temp_resistance);
     }
 
-    // Print: "ect tps map brake vbatt rpm vss_hz oil_temp_f oil_pressure_psi\n"
+    // Print: "ect tps map brake vbatt rpm vss_hz oil_temp_f oil_pressure_psi ect_gnd\n"
     Serial.print(ect, 3);        Serial.print(" ");
     Serial.print(tps, 3);        Serial.print(" ");
     Serial.print(map_v, 3);      Serial.print(" ");
@@ -209,6 +215,7 @@ void loop() {
     Serial.print(last_rpm, 0);   Serial.print(" ");
     Serial.print(last_vss_hz, 1); Serial.print(" ");
     Serial.print(oil_temp_f, 1); Serial.print(" ");
-    Serial.println(oil_pressure_psi, 1);
+    Serial.print(oil_pressure_psi, 1); Serial.print(" ");
+    Serial.println(ect_gnd, 3);
   }
 }
