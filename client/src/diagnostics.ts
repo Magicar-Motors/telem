@@ -1,5 +1,9 @@
 import { TelemetryManager } from "./telemetry";
-import { OIL_TEMP_GUIDE, OIL_PRESSURE_GUIDE, oilTemperatureStatus, oilPressureStatus } from "./oil-guidance";
+import {
+  COOLANT_TEMP_CAUTION_F, COOLANT_TEMP_GUIDE, COOLANT_TEMP_HOT_F, coolantTemperatureStatus,
+  OIL_TEMP_CAUTION_F, OIL_TEMP_GUIDE, OIL_TEMP_HOT_F, oilTemperatureStatus,
+  OIL_PRESSURE_GUIDE, oilPressureStatus, type OilStatus,
+} from "./oil-guidance";
 
 export interface DiagPanel {
   update: () => void;
@@ -13,6 +17,32 @@ const GREEN = "rgb(61, 223, 128)";
 const CYAN = "rgb(0, 212, 170)";
 const YELLOW = "rgb(255, 211, 32)";
 
+interface TempGauge {
+  cautionF: number;
+  hotF: number;
+  status: (tempF: number | undefined) => OilStatus;
+  guide: string;
+  meterLabel: string;
+}
+
+// Temperature cells that get a status-colored sparkline, a banded scale and clickable guidance.
+const TEMP_GAUGES: Record<string, TempGauge> = {
+  coolant_temp: {
+    cautionF: COOLANT_TEMP_CAUTION_F,
+    hotF: COOLANT_TEMP_HOT_F,
+    status: coolantTemperatureStatus,
+    guide: `${COOLANT_TEMP_GUIDE}. Provisional guidance, not a Honda service limit. The ECT calibration may read a few °F hot near operating temperature.`,
+    meterLabel: "Coolant temperature toward hot threshold",
+  },
+  oil_temp: {
+    cautionF: OIL_TEMP_CAUTION_F,
+    hotF: OIL_TEMP_HOT_F,
+    status: oilTemperatureStatus,
+    guide: `${OIL_TEMP_GUIDE}. Provisional guidance, not a Honda service limit. Oil grade, load and sensor location affect temperature.`,
+    meterLabel: "Oil temperature toward hot threshold",
+  },
+};
+
 interface DiagCell {
   channel: string;
   label: string;
@@ -20,6 +50,7 @@ interface DiagCell {
   valueEl: HTMLElement;
   cellEl: HTMLElement;
   guide?: string;
+  tempGauge?: TempGauge;
   detailsEl?: HTMLElement;
   axisEl?: HTMLElement;
   fillEl?: HTMLElement;
@@ -92,13 +123,14 @@ function createCell(
     </div>
     <canvas class="diag-cell-spark"></canvas>
   `;
+  const tempGauge = TEMP_GAUGES[channel];
   let guide: string | undefined;
-  if (channel === "oil_temp" || channel === "oil_pressure") {
-    guide = channel === "oil_temp"
-      ? `${OIL_TEMP_GUIDE}. Provisional guidance, not a Honda service limit. Oil grade, load and sensor location affect temperature.`
+  if (tempGauge || channel === "oil_pressure") {
+    guide = tempGauge
+      ? tempGauge.guide
       : `${OIL_PRESSURE_GUIDE}. Service-test minimums, not a normal range at every RPM. Cold oil raises pressure.`;
     const details = document.createElement("div");
-    details.className = "diag-oil-details";
+    details.className = "diag-gauge-details";
     details.id = `diag-details-${channel}`;
     details.hidden = true;
     details.textContent = `No current data. ${guide}`;
@@ -122,18 +154,27 @@ function createCell(
       }
     });
   }
-  if (channel === "oil_temp" || channel === "oil_pressure") {
+  if (guide) {
     const plot = document.createElement("div");
-    plot.className = "diag-oil-plot";
+    plot.className = "diag-gauge-plot";
     plot.innerHTML = `
-      <div class="diag-oil-axis ${channel === "oil_temp" ? "diag-oil-axis-temperature" : ""}" role="meter" aria-label="${channel === "oil_temp" ? "Oil temperature toward hot threshold" : "Oil pressure in PSI"}"
+      <div class="diag-gauge-axis ${tempGauge ? "diag-gauge-axis-temperature" : ""}" role="meter" aria-label="${tempGauge ? tempGauge.meterLabel : "Oil pressure in PSI"}"
            aria-valuemin="${min}" aria-valuemax="${max}" aria-valuetext="No current data">
-        <span class="diag-oil-axis-top">${max}${unit}</span>
-        <span class="diag-oil-axis-bottom">${min}</span>
-        <div class="diag-oil-axis-track"><div class="diag-oil-axis-fill" hidden></div></div>
+        <span class="diag-gauge-axis-top">${max}${unit}</span>
+        <span class="diag-gauge-axis-bottom">${min}</span>
+        <div class="diag-gauge-axis-track"><div class="diag-gauge-axis-fill" hidden></div></div>
       </div>`;
     plot.prepend(cell.querySelector("canvas")!);
     cell.appendChild(plot);
+    if (tempGauge) {
+      // Fixed bands: white below caution, amber to hot, red at or above hot (tick marks hot).
+      const pct = (f: number) => Math.max(0, Math.min(100, (f - min) / (max - min) * 100));
+      const cautionPct = pct(tempGauge.cautionF);
+      const hotPct = pct(tempGauge.hotF);
+      const track = plot.querySelector<HTMLElement>(".diag-gauge-axis-track")!;
+      track.style.background = `linear-gradient(to right, #fff 0% ${cautionPct}%, #ffbf47 ${cautionPct}% ${hotPct}%, #ff4436 ${hotPct}% 100%)`;
+      track.style.setProperty("--hot-pos", `${hotPct}%`);
+    }
   }
   parent.appendChild(cell);
 
@@ -143,11 +184,11 @@ function createCell(
     channel, label, unit,
     valueEl: cell.querySelector(".diag-cell-value") as HTMLElement,
     cellEl: cell,
-    guide,
-    detailsEl: cell.querySelector<HTMLElement>(".diag-oil-details") ?? undefined,
-    axisEl: cell.querySelector<HTMLElement>(".diag-oil-axis") ?? undefined,
-    fillEl: cell.querySelector<HTMLElement>(".diag-oil-axis-fill") ?? undefined,
-    trackEl: cell.querySelector<HTMLElement>(".diag-oil-axis-track") ?? undefined,
+    guide, tempGauge,
+    detailsEl: cell.querySelector<HTMLElement>(".diag-gauge-details") ?? undefined,
+    axisEl: cell.querySelector<HTMLElement>(".diag-gauge-axis") ?? undefined,
+    fillEl: cell.querySelector<HTMLElement>(".diag-gauge-axis-fill") ?? undefined,
+    trackEl: cell.querySelector<HTMLElement>(".diag-gauge-axis-track") ?? undefined,
     canvas,
     ctx: canvas.getContext("2d")!,
     color, min, max, warnAbove, warnBelow, transform,
@@ -164,7 +205,7 @@ export function createDiagnostics(
   const grid = container.querySelector(".diag-grid") as HTMLElement;
 
   const cells: DiagCell[] = [
-    createCell(grid, "coolant_temp", "冷却 COOLANT", "\u00B0F", RED, 32, 270, 230, toF),
+    createCell(grid, "coolant_temp", "冷却 COOLANT", "\u00B0F", RED, 100, 300, undefined, toF),
     createCell(grid, "oil_temp", "油温 OIL TEMP", "\u00B0F", ORANGE, 100, 300, undefined, toF),
     createCell(grid, "oil_pressure", "油圧 OIL PRESS", "PSI", YELLOW, 0, 100),
     createCell(grid, "battery_voltage", "電圧 BATTERY", "V", GREEN, 11, 15),
@@ -186,26 +227,26 @@ export function createDiagnostics(
     for (const cell of cells) {
       if (cell.guide) {
         const value = currentValue(cell.channel);
-        const status = cell.channel === "oil_temp"
-          ? oilTemperatureStatus(value == null ? undefined : toF(value))
+        const { tempGauge } = cell;
+        const displayValue = value == null ? undefined : cell.transform ? cell.transform(value) : value;
+        const status = tempGauge
+          ? tempGauge.status(displayValue)
           : oilPressureStatus(value, currentValue("rpm"));
         cell.cellEl.dataset.tone = status.tone;
-        const displayValue = value == null ? undefined : cell.transform ? cell.transform(value) : value;
-        const proximity = cell.channel === "oil_temp" && displayValue != null
-          ? displayValue < 260 ? ` ${Math.round(260 - displayValue)}°F below hot threshold.` : " At or above hot threshold."
+        const proximity = tempGauge && displayValue != null
+          ? displayValue < tempGauge.hotF
+            ? ` ${Math.round(tempGauge.hotF - displayValue)}°F below hot threshold.`
+            : " At or above hot threshold."
           : "";
         cell.detailsEl!.textContent = `${status.text}.${proximity} ${cell.guide}`;
         cell.color = status.tone === "danger" ? RED
           : status.tone === "caution" ? "rgb(255, 191, 71)" : "rgb(255, 255, 255)";
-        if (cell.trackEl) {
-          if (cell.channel === "oil_temp") {
-            cell.trackEl.style.background = "linear-gradient(to right, #fff 0% 65%, #ffbf47 65% 80%, #ff4436 80% 100%)";
-          } else {
-            const rpm = currentValue("rpm");
-            const redEnd = rpm != null && rpm >= 400 ? rpm > 1500 ? 15 : 10 : 0;
-            const amberEnd = rpm != null && rpm >= 3000 ? 50 : redEnd;
-            cell.trackEl.style.background = `linear-gradient(to right, #ff4436 0% ${redEnd}%, #ffbf47 ${redEnd}% ${amberEnd}%, #fff ${amberEnd}% 100%)`;
-          }
+        // Temperature bands are fixed at creation; pressure bands move with RPM.
+        if (cell.trackEl && !tempGauge) {
+          const rpm = currentValue("rpm");
+          const redEnd = rpm != null && rpm >= 400 ? rpm > 1500 ? 15 : 10 : 0;
+          const amberEnd = rpm != null && rpm >= 3000 ? 50 : redEnd;
+          cell.trackEl.style.background = `linear-gradient(to right, #ff4436 0% ${redEnd}%, #ffbf47 ${redEnd}% ${amberEnd}%, #fff ${amberEnd}% 100%)`;
         }
         if (cell.axisEl && cell.fillEl) {
           cell.fillEl.hidden = displayValue == null;
