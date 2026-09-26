@@ -305,6 +305,19 @@ To watch the real car, you need the receiver running — live telemetry arrives
 over UDP and nothing reaches the browser without it:
 
 ```bash
+./start-all-client.sh
+```
+
+This installs tmux with Homebrew if needed, then starts the UDP receiver,
+dashboard, and OBS controller in three panes. The dashboard is at
+`http://localhost:5173` and the OBS controller is at `http://localhost:5174`.
+Click a pane to focus it, use `Ctrl-B D` to detach, and reattach with
+`tmux attach -t telem-client`. Stop all three with
+`tmux kill-session -t telem-client`.
+
+You can also run the receiver and dashboard separately:
+
+```bash
 # Terminal 1 — live telemetry receiver
 cd udp-client-receiver && npm start
 
