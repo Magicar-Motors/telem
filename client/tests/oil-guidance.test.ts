@@ -1,10 +1,20 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { oilTemperatureStatus as temperature, oilPressureStatus as pressure } from "../src/oil-guidance";
+import {
+  coolantTemperatureStatus as coolant,
+  oilTemperatureStatus as temperature,
+  oilPressureStatus as pressure,
+} from "../src/oil-guidance";
 
 test("warm-up is not an alarm; temperature bands include their documented boundaries", () => {
-  for (const [value, tone] of [[110, "normal"], [179.9, "normal"], [180, "normal"], [230, "normal"], [230.1, "caution"], [259.9, "caution"], [260, "danger"]] as const) {
+  for (const [value, tone] of [[110, "normal"], [179.9, "normal"], [180, "normal"], [230, "normal"], [239.9, "normal"], [240, "caution"], [259.9, "caution"], [260, "danger"]] as const) {
     assert.equal(temperature(value).tone, tone);
+  }
+});
+
+test("coolant is normal below 230°F, amber from 230°F and red from 250°F", () => {
+  for (const [value, tone] of [[70, "normal"], [207, "normal"], [229.9, "normal"], [230, "caution"], [249.9, "caution"], [250, "danger"]] as const) {
+    assert.equal(coolant(value).tone, tone);
   }
 });
 
@@ -24,6 +34,7 @@ test("pressure accounts for stopped, cranking, idle and driving RPM", () => {
 test("missing or invalid sensors cannot show a reassuring status", () => {
   for (const value of [undefined, NaN, Infinity]) {
     assert.equal(temperature(value).tone, "neutral");
+    assert.equal(coolant(value).tone, "neutral");
     assert.equal(pressure(value, 3000).tone, "neutral");
     assert.equal(pressure(40, value).tone, "neutral");
   }

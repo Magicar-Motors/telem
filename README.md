@@ -374,15 +374,19 @@ curl -fsSL https://raw.githubusercontent.com/platformio/platformio-core/develop/
 sudo service udev restart
 ```
 
-### Oil dashboard guidance
+### Oil and coolant dashboard guidance
 
-The dashboard detail view shows a provisional **180–230°F driving guide**, white up to 230°F, amber above 230°F, and red at or above 260°F (the existing
-dashboard hot-oil threshold). These are operator guidance bands, not verified
-Honda temperature limits; oil grade, load, sensor location and observed healthy
-driving data should inform future tuning. Click an oil box to show its description; click again to restore its chart.
-Enter and Space also toggle the focused box. A horizontal
-100–300°F scale below the oil temperature sparkline has fixed white (to 230°F),
-amber (230–260°F), and red (260°F+) segments, with a marker for the current value. The detail view includes degrees remaining to hot. Oil pressure has a matching
+The dashboard detail view shows a provisional **180–240°F oil driving guide**:
+white below 240°F, amber from 240°F, and red at or above 260°F (the existing
+dashboard hot-oil threshold). Coolant is white below 230°F, amber from 230°F,
+and red at or above 250°F. These are operator guidance bands, not verified
+Honda temperature limits; oil grade, load, sensor location, ECT calibration and
+observed healthy driving data should inform future tuning. The thresholds live
+in `client/src/oil-guidance.ts`. Click an oil or coolant box to show its
+description; click again to restore its chart. Enter and Space also toggle the
+focused box. A horizontal 100–300°F scale below each temperature sparkline has
+fixed white, amber and red segments, a tick at the hot threshold, and a marker
+for the current value. The detail view includes degrees remaining to hot. Oil pressure has a matching
 0–100 psi bar with RPM-aware range segments (red below the low-pressure warning,
 amber up to 50 psi at 3,000 RPM or more, white otherwise); 100 psi is the scale maximum, not
 a pressure warning threshold.
