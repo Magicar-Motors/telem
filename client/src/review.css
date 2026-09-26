@@ -521,6 +521,48 @@
   white-space: nowrap;
 }
 
+/* ── Engine diagnostics readout (top right of the map) ── */
+#review-diag {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 1000;
+  display: grid;
+  grid-template-columns: auto auto auto;
+  align-items: baseline;
+  column-gap: 8px;
+  row-gap: 2px;
+  background: rgba(13, 13, 18, 0.85);
+  border: 1px solid var(--border);
+  padding: 6px 10px;
+  pointer-events: none;
+  font-family: var(--font);
+}
+
+#review-diag[hidden] { display: none; }
+
+.review-diag-label {
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  color: var(--text-dim);
+}
+
+.review-diag-value {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-dim);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  min-width: 3ch;
+}
+
+.review-diag-unit {
+  font-size: 8px;
+  letter-spacing: 1px;
+  color: var(--text);
+}
+
 /* ── Trail mode toggles ── */
 #review-trail-modes {
   flex-shrink: 0;

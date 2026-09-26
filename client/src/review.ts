@@ -24,6 +24,10 @@ import {
   fitEnvelope, utilization, type Envelope,
 } from "../../server/src/analysis/traction";
 import { createUtilGauge } from "./util-gauge";
+import {
+  buildLapDiag, diagLevels, diagStatus, formatDiag, isDiagMode, levelColor, worstLevel,
+  DIAG_LEGENDS, EMPTY_DIAG, TONE_COLORS, type DiagMode, type LapDiag,
+} from "./review-diagnostics";
 
 const TILES_SAT = "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}";
 const TILE_OPTS_SAT: L.TileLayerOptions = { maxZoom: 20 };
@@ -54,6 +58,7 @@ let lapRpms: number[] = [];
 let lapGears: number[] = [];
 let lapBrakes: number[] = [];
 let lapTimestamps: number[] = [];
+let lapDiag: LapDiag = EMPTY_DIAG;
 let lapFrame: LapFrame | null = null;
 let sessionEnvelope: Envelope | null = null;
 let sessionMeanU: number | null = null;
@@ -202,7 +207,7 @@ function renderAggControls(): void {
 }
 
 // ── Trail mode dropdown (opens upward) ──
-type TrailMode = "speed" | "throttle" | "rpm" | "gear" | "brake" | "traction";
+type TrailMode = "speed" | "throttle" | "rpm" | "gear" | "brake" | "traction" | DiagMode;
 const trailModeDropdown = createDropdown("SPEED", "", "up");
 trailModeDropdown.setOptions([
   { value: "speed", label: "SPEED" },
@@ -210,6 +215,9 @@ trailModeDropdown.setOptions([
   { value: "rpm", label: "RPM" },
   { value: "brake", label: "BRAKE" },
   { value: "traction", label: "TRACTION" },
+  { value: "coolant", label: "COOLANT" },
+  { value: "oil_temp", label: "OIL TEMP" },
+  { value: "oil_pressure", label: "OIL PRESS" },
 ]);
 trailModeDropdown.setValue("speed");
 trailModeDropdown.onChange = (v) => {
@@ -248,6 +256,13 @@ function tractionSeries(samples: { aLat: number; aLong: number }[]): number[] {
 function rpmToColorByValue(rpm: number): string {
   return rpmToColor(Math.min(1, rpm / MAX_RPM));
 }
+
+/** Trail colour per value. Diagnostics modes colour by dashboard status instead. */
+const COLOR_FNS: Record<Exclude<TrailMode, DiagMode>, (v: number) => string> = {
+  speed: speedToColor, throttle: throttleToColor, rpm: rpmToColorByValue,
+  gear: gearToColor, brake: (v) => v > 0.5 ? "#e74c3c" : "rgba(255,255,255,0.3)",
+  traction: tractionToColor,
+};
 
 // ── Map ──
 const map = L.map(mapEl, {
@@ -297,6 +312,9 @@ const trailFormat: Record<TrailMode, (i: number) => string> = {
                           Math.max(-x.aLong, 0) / G_MS2, sessionEnvelope);
     return `${Math.round(u * 100)}% grip`;
   },
+  coolant: (i) => formatDiag("coolant", lapDiag, lapRpms, i),
+  oil_temp: (i) => formatDiag("oil_temp", lapDiag, lapRpms, i),
+  oil_pressure: (i) => formatDiag("oil_pressure", lapDiag, lapRpms, i),
 };
 
 function hideTrailTooltip() {
@@ -514,6 +532,7 @@ const LEGENDS: Record<TrailMode, { title: string; stops: LegendStop[] }> = {
   gear: { title: "GEAR", stops: GEAR_LEGEND },
   brake: { title: "BRAKE", stops: BRAKE_LEGEND },
   traction: { title: "TRACTION", stops: TRACTION_LEGEND },
+  ...DIAG_LEGENDS,
 };
 
 function renderLegend() {
@@ -527,6 +546,36 @@ function renderLegend() {
   }
 }
 renderLegend();
+
+// ── Engine diagnostics readout ──
+// Top right of the map: the gauge column is already full, and these change
+// slowly enough that a small readout is all they need.
+const DIAG_ROWS: { mode: DiagMode; label: string; unit: string; values: () => number[] }[] = [
+  { mode: "coolant", label: "冷却 COOLANT", unit: "°F", values: () => lapDiag.coolantF },
+  { mode: "oil_temp", label: "油温 OIL TEMP", unit: "°F", values: () => lapDiag.oilF },
+  { mode: "oil_pressure", label: "油圧 OIL PRESS", unit: "PSI", values: () => lapDiag.oilPsi },
+];
+const diagHudEl = document.createElement("div");
+diagHudEl.id = "review-diag";
+diagHudEl.hidden = true;
+diagHudEl.innerHTML = DIAG_ROWS.map((r) =>
+  `<span class="review-diag-label">${r.label}</span>` +
+  `<span class="review-diag-value" data-mode="${r.mode}">--</span>` +
+  `<span class="review-diag-unit">${r.unit}</span>`).join("");
+mapEl.appendChild(diagHudEl);
+
+/** Values at sample idx, coloured like the dashboard. Hidden with no lap. */
+function updateDiagHud(idx: number | null): void {
+  diagHudEl.hidden = idx === null;
+  if (idx === null) return;
+  for (const r of DIAG_ROWS) {
+    const el = diagHudEl.querySelector<HTMLElement>(`.review-diag-value[data-mode="${r.mode}"]`)!;
+    const v = r.values()[idx];
+    const status = diagStatus(r.mode, lapDiag, lapRpms, idx);
+    el.textContent = Number.isFinite(v) ? String(Math.round(v)) : "--";
+    el.style.color = status ? TONE_COLORS[status.tone] : "";
+  }
+}
 
 // ── IndexedDB cache layer ──
 const DB_NAME = "telem_review";
@@ -1007,7 +1056,8 @@ function clearLapView() {
   lapListEl.innerHTML = "";
   lapCoords = []; lapSpeeds = []; lapThrottles = [];
   lapRpms = []; lapGears = []; lapBrakes = [];
-  lapTimestamps = []; lapTicks = [];
+  lapTimestamps = []; lapTicks = []; lapDiag = EMPTY_DIAG;
+  updateDiagHud(null);
   seekEl.value = "0"; seekTimeEl.textContent = "0:00.000"; seekEpochEl.textContent = "--";
   speedValueEl.textContent = "--";
   throttleValueEl.textContent = "--";
@@ -1095,7 +1145,7 @@ async function selectLap(idx: number, forceRefresh = false) {
     if (!cached || forceRefresh) {
       lapTicks = []; lapCoords = []; lapSpeeds = []; lapThrottles = [];
       lapRpms = []; lapGears = []; lapBrakes = [];
-      lapTimestamps = [];
+      lapTimestamps = []; lapDiag = EMPTY_DIAG;
       drawTrail();
       seekEl.max = "0"; seekEl.value = "0";
       updateSeek(0);
@@ -1110,7 +1160,7 @@ async function selectLap(idx: number, forceRefresh = false) {
     // Reusing inflight fetch — clear display and show loading
     lapTicks = []; lapCoords = []; lapSpeeds = []; lapThrottles = [];
     lapRpms = []; lapGears = []; lapBrakes = [];
-    lapTimestamps = [];
+    lapTimestamps = []; lapDiag = EMPTY_DIAG;
     drawTrail();
     seekEl.max = "0"; seekEl.value = "0";
     updateSeek(0);
@@ -1129,6 +1179,7 @@ async function selectLap(idx: number, forceRefresh = false) {
   lapGears = S.map((x) => x.gear);
   lapBrakes = S.map((x) => x.brake);
   lapTimestamps = S.map((x) => x.tsMs);
+  lapDiag = buildLapDiag(lapTicks, lapTimestamps);
 
   drawTrail();
   seekEl.max = String(Math.max(0, lapCoords.length - 1));
@@ -1162,6 +1213,7 @@ async function showAllLaps() {
   // Clear single-lap display
   lapTicks = []; lapCoords = []; lapSpeeds = []; lapThrottles = [];
   lapRpms = []; lapGears = []; lapBrakes = []; lapTimestamps = [];
+  lapDiag = EMPTY_DIAG;
   drawTrail();
   clearSeekDisplay();
 
@@ -1186,11 +1238,12 @@ async function showAllLaps() {
     const brakes = S.map((x) => x.brake);
     const gears = S.map((x) => x.gear);
     const gs = S.map((x) => ({ aLat: x.aLat, aLong: x.aLong }));
+    const diag = buildLapDiag(data.ticks, S.map((x) => x.tsMs));
 
     const frac = lap.flag === "clean" ? 1 - (lap.time - bestTime) / timeRange : 0;
     const opacity = 0.15 + frac * 0.55;
 
-    aggregateLaps.push({ idx: i, coords, speeds, throttles, rpms, brakes, gears, gs, opacity });
+    aggregateLaps.push({ idx: i, coords, speeds, throttles, rpms, brakes, gears, gs, diag, opacity });
     await yieldToPaint(); // same burst as the traction pass, same fix
   }
 
@@ -1208,6 +1261,7 @@ interface AggregateLap {
   brakes: number[];
   gears: number[];
   gs: { aLat: number; aLong: number }[];
+  diag: LapDiag;
   opacity: number;
 }
 
@@ -1238,18 +1292,21 @@ function drawAggregateTrails(): void {
   for (const l of allLapsLines) l.remove();
   allLapsLines = [];
 
-  const colorFnMap: Record<TrailMode, (v: number) => string> = {
-    speed: speedToColor, throttle: throttleToColor, rpm: rpmToColorByValue,
-    gear: gearToColor, brake: (v) => v > 0.5 ? "#e74c3c" : "rgba(255,255,255,0.3)",
-    traction: tractionToColor,
-  };
-  const colorFn = colorFnMap[trailMode];
-  const valuesFor: Record<TrailMode, (al: AggregateLap) => number[]> = {
-    speed: (al) => al.speeds, throttle: (al) => al.throttles, rpm: (al) => al.rpms,
-    gear: (al) => al.gears, brake: (al) => al.brakes,
-    traction: (al) => tractionSeries(al.gs),
-  };
-  const pick = valuesFor[trailMode];
+  const mode = trailMode;
+  const diagMode = isDiagMode(mode) ? mode : null;
+  let colorFn: (v: number) => string;
+  let pick: (al: AggregateLap) => number[];
+  if (isDiagMode(mode)) {
+    colorFn = levelColor;
+    pick = (al) => diagLevels(mode, al.diag, al.rpms);
+  } else {
+    colorFn = COLOR_FNS[mode];
+    pick = {
+      speed: (al: AggregateLap) => al.speeds, throttle: (al: AggregateLap) => al.throttles,
+      rpm: (al: AggregateLap) => al.rpms, gear: (al: AggregateLap) => al.gears,
+      brake: (al: AggregateLap) => al.brakes, traction: (al: AggregateLap) => tractionSeries(al.gs),
+    }[mode];
+  }
 
   function drawLap(al: AggregateLap, weight: number, opacity: number): void {
     const values = pick(al);
@@ -1265,7 +1322,9 @@ function drawAggregateTrails(): void {
         let sum = 0, cnt = 0;
         for (let j = gi; j < Math.min(gi + bucketSize, values.length); j++) { sum += values[j]; cnt++; }
         const avg = cnt > 0 ? sum / cnt : 0;
-        const color = colorFn(avg);
+        const color = diagMode
+          ? levelColor(worstLevel(values, gi, Math.min(gi + bucketSize, values.length)))
+          : colorFn(avg);
         const line = L.polyline(slice as L.LatLngExpression[], { color, weight, opacity }).addTo(map);
         allLapsLines.push(line);
       }
@@ -1291,17 +1350,20 @@ function drawTrail() {
   trailLines = [];
   if (lapCoords.length < 2) return;
 
-  const valuesMap: Record<TrailMode, number[]> = {
-    speed: lapSpeeds, throttle: lapThrottles, rpm: lapRpms, gear: lapGears,
-    brake: lapBrakes, traction: tractionSeries(lapFrame?.samples ?? []),
-  };
-  const colorFnMap: Record<TrailMode, (v: number) => string> = {
-    speed: speedToColor, throttle: throttleToColor, rpm: rpmToColorByValue,
-    gear: gearToColor, brake: (v) => v > 0.5 ? "#e74c3c" : "rgba(255,255,255,0.3)",
-    traction: tractionToColor,
-  };
-  const values = valuesMap[trailMode];
-  const colorFn = colorFnMap[trailMode];
+  const mode = trailMode;
+  const diagMode = isDiagMode(mode) ? mode : null;
+  let values: number[];
+  let colorFn: (v: number) => string;
+  if (isDiagMode(mode)) {
+    values = diagLevels(mode, lapDiag, lapRpms);
+    colorFn = levelColor;
+  } else {
+    values = {
+      speed: lapSpeeds, throttle: lapThrottles, rpm: lapRpms, gear: lapGears,
+      brake: lapBrakes, traction: tractionSeries(lapFrame?.samples ?? []),
+    }[mode];
+    colorFn = COLOR_FNS[mode];
+  }
 
   // Split into continuous segments at timestamp gaps
   const segments = splitAtGaps(lapCoords);
@@ -1327,6 +1389,9 @@ function drawTrail() {
         }
         const modeGear = Object.entries(counts).sort((a, b) => b[1] - a[1])[0];
         color = gearToColor(modeGear ? parseInt(modeGear[0]) : 0);
+      } else if (diagMode) {
+        // Worst sample, not the mean, so a short pressure dip isn't averaged away.
+        color = levelColor(worstLevel(values, gi, Math.min(gi + segBucketSize, values.length)));
       } else {
         color = colorFn(avg);
       }
@@ -1351,6 +1416,7 @@ function clearSeekDisplay() {
   rpmValueEl.textContent = "--";
   updateGaugeSegs(rpmSegTrack, 0, () => "");
   setBrake(null);
+  updateDiagHud(null);
 }
 
 function updateSeek(idx: number) {
@@ -1405,6 +1471,8 @@ function updateSeek(idx: number) {
 
   // Brake
   setBrake((lapBrakes[idx] ?? 0) > 0.5);
+
+  updateDiagHud(idx);
 }
 
 seekEl.addEventListener("input", () => {
