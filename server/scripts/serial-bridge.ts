@@ -23,13 +23,8 @@
  *   ECT (Engine Coolant Temperature) — Pin A8, ECU sensor ground — Pin A13
  *     Both read through biased 100k/470k dividers so a negative ECU ground offset
  *     can't clip; see ectSense() in sensors.ts for the circuit and the math.
- *     NTC thermistor via voltage divider. Nonlinear.
- *     Honda typical resistance: 20kΩ @ -20°C, ~0.1kΩ @ 120°C
- *     Approximate voltage-to-temp lookup (Honda 2-wire ECT sensor):
- *       4.5V ≈ -20°C, 3.5V ≈ 20°C, 2.5V ≈ 60°C, 1.0V ≈ 95°C, 0.5V ≈ 110°C
- *     We use linear interpolation between known points.
- *     Conversion: voltage → resistance → temperature (log interpolation on R-T table)
- *     Source: https://honda-tech.com/forums/honda-accord-1990-2002-2/coolant-temperature-sensor-question-3008918/
+ *     NTC thermistor on the ECU's pull-up. Conversion: voltage → resistance →
+ *     temperature via a Beta model; see ectToTempC() in sensors.ts.
  *
  *   Brake Indicator — Pin A5
  *     12V brake light circuit through 4.3× voltage divider.
@@ -132,7 +127,6 @@ async function main() {
 
     const payload = [
       // Converted values
-      { channel: "coolant_temp", value: Math.round(ectToTempC(ectRelV) * 10) / 10 },
       { channel: "throttle_pos", value: Math.round(tpsToPercent(tpsV) * 10) / 10 },
       { channel: "manifold_pressure", value: Math.round(mapToKpa(mapV) * 10) / 10 },
       { channel: "brake", value: brakeV > BRAKE_THRESHOLD_V ? 1 : 0 },
@@ -146,6 +140,12 @@ async function main() {
       { channel: "brake_voltage", value: Math.round(brakeV * 100) / 100 },
       { channel: "vss_hz", value: Math.round(vssHz * 10) / 10 },
     ];
+
+    // Outside 0–5V the thermistor model has no answer; skip rather than send null.
+    const coolantC = ectToTempC(ectRelV);
+    if (Number.isFinite(coolantC)) {
+      payload.push({ channel: "coolant_temp", value: Math.round(coolantC * 10) / 10 });
+    }
 
     if (sense) {
       payload.push(

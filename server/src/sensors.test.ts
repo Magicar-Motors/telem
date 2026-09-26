@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { ectSense } from "./sensors.js";
+import { ectSense, ectToTempC, ectToVoltage } from "./sensors.js";
 
 // Forward model of one biased divider: what the pin reads for an input vs Mega GND.
 const pin = (vIn: number) => vIn * (470 / 570) + 5 * (100 / 570);
@@ -22,4 +22,22 @@ describe("ectSense", () => {
       });
     }
   }
+});
+
+describe("ectToTempC (Beta model)", () => {
+  it("reads 40°C when the thermistor is at R_ref (1.16k on a 1.5k pull-up)", () => {
+    const v = 5 * 1.16 / (1.5 + 1.16);
+    expect(ectToTempC(v)).toBeCloseTo(40, 6);
+  });
+
+  it("round-trips through ectToVoltage", () => {
+    for (const c of [-20, 0, 40, 90, 120]) {
+      expect(ectToTempC(ectToVoltage(c))).toBeCloseTo(c, 6);
+    }
+  });
+
+  it("returns NaN outside 0–5V", () => {
+    expect(ectToTempC(0)).toBeNaN();
+    expect(ectToTempC(5)).toBeNaN();
+  });
 });

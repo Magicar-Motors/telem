@@ -7,22 +7,49 @@
 
 // ── Shared constants ──
 
-export const ECT_PULLUP_KOHM = 6.65; // Honda ECU internal pull-up, derived from 0.25V @ 190°F (87.8°C)
-
 /**
- * ECT resistance-to-temperature table from Honda FSM:
- *   12.0 kΩ → -20°C    0.7 kΩ →  60°C
- *    5.0 kΩ →   0°C    0.4 kΩ →  80°C
- *    2.0 kΩ →  20°C    0.2 kΩ → 100°C
- *    1.2 kΩ →  40°C    0.1 kΩ → 120°C
+ * ECT: voltage → temperature. Assumptions, locked in 2026-09-25.
  *
- * The Mega reads voltage from a voltage divider: V = 5 * R_therm / (R_pullup + R_therm)
- * Conversion: voltage → resistance → temperature (log interpolation on R-T table)
+ * Circuit: the ECU pulls its ECT input up to its own 5V reference through an
+ * internal resistor R_p; the 2-wire NTC thermistor returns to the ECU's sensor
+ * ground. So, with V measured relative to that sensor ground (see ectSense()):
+ *   R    = R_p · V / (5 − V)
+ *   T[K] = 1 / ( 1/313.15 + (1/B) · ln(R / R_ref) )
+ *
+ * 1. ECU reference = 5.00V. Not measured. Ratiometric error: a 2% low reference
+ *    reads a few °F hot at operating temperature.
+ *
+ * 2. R_p = 1.5 kΩ. No published value was found online. Cross-check against a
+ *    known temperature (2026-09-25, idle 774 rpm, radiator fan cycling, oil
+ *    89.4°C / 193°F, coolant taken as 195°F): median corrected ECT 0.551V over
+ *    15s, which with this Beta model implies R_p ≈ 1.67k (1.5–1.85k for
+ *    ±0.05V or ±5°F). 1.5k is inside that range; against that point it reads
+ *    ~202°F instead of 195°F, i.e. up to ~7°F hot near operating temperature.
+ *    Settle it by resistor substitution: ignition on, engine off, sensor
+ *    unplugged, R_p = R_known · (V_open − V_load) / V_load.
+ *    The previous 6.65k was derived from readings taken before the ECU ground
+ *    offset was known, so it included that offset, and is discarded.
+ *
+ * 3. Thermistor Beta model: B = 3881, R_ref = 1.16 kΩ at 40°C, supplied as the
+ *    reference curve. It disagrees with the Honda FSM R–T table we used before:
+ *        °C    -20    0    20   40   60    80    100   120
+ *        FSM   12.0   5.0  2.0  1.2  0.7   0.4   0.2   0.1   kΩ
+ *        Beta  21.9   7.1  2.7  1.16 0.55  0.29  0.16  0.09  kΩ
+ *    so at the hot end the Beta model reads hotter than the FSM table would for
+ *    the same resistance.
+ *
+ * 4. The 195°F calibration assumes coolant ≈ oil + 2°F at a thermostat-held
+ *    idle with the fan cycling. The corrected ECT voltage was noisy over that
+ *    window (0.27–0.65V), so the median is the calibration value, not any
+ *    single sample.
  */
-export const ECT_TABLE: [number, number][] = [
-  [12.0, -20], [5.0, 0], [2.0, 20], [1.2, 40],
-  [0.7, 60], [0.4, 80], [0.2, 100], [0.1, 120],
-];
+export const ECT_PULLUP_KOHM = 1.5; // Honda ECU internal pull-up (assumption 2)
+export const ECT_ECU_VREF = 5.0;    // ECU reference the pull-up hangs from (assumption 1)
+
+// Thermistor Beta model (assumption 3)
+export const ECT_BETA = 3881;
+export const ECT_R_REF_KOHM = 1.16;
+export const ECT_T_REF_K = 313.15;
 
 // ── ECT sense circuit ──
 //
@@ -34,6 +61,21 @@ export const ECT_TABLE: [number, number][] = [
 //   ECU sensor gnd  ──[100k]──┬── A13  ──[470k]── Mega 5V
 //
 // Both pins read: V_pin = GAIN × V_in + BIAS, where V_in is relative to Mega GND.
+//
+// Assumptions:
+// - Resistors are their nominal 100k / 470k. Mismatch between the two dividers
+//   shows up as an offset in (V_A8 − V_A13), removed by ECT_SENSE_ZERO_V.
+// - Mega 5V = 5.00V. BIAS is ratiometric (bias and ADC reference are the same
+//   rail) so it's exact regardless; only GAIN scales: a 4.8V rail reads ECT and
+//   the ground delta ~4% high.
+// - Source resistance behind each 100k is ignored: ~0 for sensor ground, ≤0.33k
+//   hot for the ECT node. The ~9µA the 470k pushes into the ECT node shifts it
+//   ~3mV at operating temperature; the ECU reads the same shifted node.
+// - ADC pin leakage × 82k source is a few mV and mostly common to both pins.
+// - The ECU ground offset stays above −1.06V vs Mega GND (the circuit's floor).
+//   Measured −0.4 to −0.5V, seen −0.26 to −0.63V at idle on 2026-09-25.
+// - Uncalibrated: ECT_SENSE_ZERO_V = 0 until the bench zero is measured (both
+//   taps to Mega GND, record V_A8 − V_A13).
 
 export const ECT_SENSE_SERIES_KOHM = 100; // tap → pin
 export const ECT_SENSE_BIAS_KOHM = 470;   // pin → Mega 5V
@@ -78,23 +120,12 @@ export function mapToKpa(v: number): number {
   return (v - 0.5) * 32.4 + 20;
 }
 
-/** ECT: voltage → temperature in °C via resistance lookup. */
+/** ECT: voltage (relative to ECU sensor ground) → temperature in °C. NaN outside 0–5V. */
 export function ectToTempC(v: number): number {
-  if (v <= 0 || v >= 5.0) return v <= 0 ? 120 : -20;
-  const rKohm = ECT_PULLUP_KOHM * v / (5.0 - v);
-
-  if (rKohm >= ECT_TABLE[0][0]) return ECT_TABLE[0][1];
-  if (rKohm <= ECT_TABLE[ECT_TABLE.length - 1][0]) return ECT_TABLE[ECT_TABLE.length - 1][1];
-
-  for (let i = 0; i < ECT_TABLE.length - 1; i++) {
-    const [r1, t1] = ECT_TABLE[i];
-    const [r2, t2] = ECT_TABLE[i + 1];
-    if (rKohm <= r1 && rKohm >= r2) {
-      const frac = (Math.log(r1) - Math.log(rKohm)) / (Math.log(r1) - Math.log(r2));
-      return t1 + frac * (t2 - t1);
-    }
-  }
-  return ECT_TABLE[ECT_TABLE.length - 1][1];
+  if (!(v > 0 && v < ECT_ECU_VREF)) return NaN;
+  const rKohm = ECT_PULLUP_KOHM * v / (ECT_ECU_VREF - v);
+  const tK = 1 / (1 / ECT_T_REF_K + Math.log(rKohm / ECT_R_REF_KOHM) / ECT_BETA);
+  return tK - 273.15;
 }
 
 // ── Inverse conversions (physical → voltage) ──
@@ -109,22 +140,9 @@ export function mapToVoltage(kpa: number): number {
   return (kpa - 20) / 32.4 + 0.5;
 }
 
-/** ECT: temperature °C → voltage */
+/** ECT: temperature °C → voltage (inverse of ectToTempC) */
 export function ectToVoltage(tempC: number): number {
-  let rKohm: number;
-  if (tempC <= ECT_TABLE[0][1]) rKohm = ECT_TABLE[0][0];
-  else if (tempC >= ECT_TABLE[ECT_TABLE.length - 1][1]) rKohm = ECT_TABLE[ECT_TABLE.length - 1][0];
-  else {
-    rKohm = ECT_TABLE[0][0];
-    for (let i = 0; i < ECT_TABLE.length - 1; i++) {
-      const [r1, t1] = ECT_TABLE[i];
-      const [r2, t2] = ECT_TABLE[i + 1];
-      if (tempC >= t1 && tempC <= t2) {
-        const frac = (tempC - t1) / (t2 - t1);
-        rKohm = Math.exp(Math.log(r1) + frac * (Math.log(r2) - Math.log(r1)));
-        break;
-      }
-    }
-  }
-  return 5 * rKohm / (ECT_PULLUP_KOHM + rKohm);
+  const tK = tempC + 273.15;
+  const rKohm = ECT_R_REF_KOHM * Math.exp(ECT_BETA * (1 / tK - 1 / ECT_T_REF_K));
+  return ECT_ECU_VREF * rKohm / (ECT_PULLUP_KOHM + rKohm);
 }
